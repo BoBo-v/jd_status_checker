@@ -6,7 +6,6 @@
 import time
 from datetime import datetime
 from typing import NamedTuple, Optional
-from pathlib import Path
 from DrissionPage import ChromiumPage
 
 from config import (
@@ -18,10 +17,11 @@ from config import (
 
 class DetectionResult(NamedTuple):
     sku_id: str
-    status: any          # 0=正常在售, 1=已下架, "待查"=需人工介入/重试, "异常"=非法链接等
-    remark: str          # 状态详细说明
+    status: any              # 0=正常在售, 1=已下架, "待查"=需人工介入/重试, "异常"=非法链接等
+    remark: str              # 状态详细说明
     screenshot_path: Optional[str] = None
-    is_risk: bool = False  # 是否触发了风控或登录拦截
+    is_risk: bool = False    # 是否触发了风控或登录拦截
+    is_captcha: bool = False # 是否触发了需要人机交互的安全验证（如 CFE 快速验证、滑块）
 
 
 def take_error_screenshot(page: ChromiumPage, sku_id: str) -> str:
@@ -70,6 +70,7 @@ def detect_product_status(
                 remark="触发强制登录拦截",
                 screenshot_path=img_path,
                 is_risk=True,
+                is_captcha=False,
             )
 
         # 提取页面全文（包含纯文本与源码）
@@ -78,8 +79,16 @@ def detect_product_status(
         page_text = body_ele.text if body_ele else ""
 
         # -------------------------------------------------------------
-        # 判定分支 2: 触发安全风控 / 滑块验证码
+        # 判定分支 2: 触发 CFE 安全风控拦截页与滑块验证
+        # 特征：cfe.m.jd.com、"验证一下，购物无忧"、"快速验证" 等
         # -------------------------------------------------------------
+        is_cfe_page = (
+            "cfe.m.jd.com" in current_url
+            or "验证一下，购物无忧" in page_text
+            or "快速验证" in page_text
+            or "遇到问题点我反馈" in page_text
+        )
+
         risk_keywords = [
             "验证码",
             "安全验证",
@@ -90,14 +99,18 @@ def detect_product_status(
             "请按住滑块",
             "请完成下方验证",
         ]
-        if any(kw in page_text or kw in html_content for kw in risk_keywords):
+        has_risk_text = any(kw in page_text or kw in html_content for kw in risk_keywords)
+
+        if is_cfe_page or has_risk_text:
             img_path = take_error_screenshot(page, sku_id)
+            remark_msg = "触发安全验证（CFE购物无忧拦截）" if is_cfe_page else "触发验证码风控，需验证"
             return DetectionResult(
                 sku_id=sku_id,
                 status="待查",
-                remark="触发验证码风控，需重试",
+                remark=remark_msg,
                 screenshot_path=img_path,
                 is_risk=True,
+                is_captcha=True,  # 标记为人机验证，触发暂停等待人工处理逻辑
             )
 
         # -------------------------------------------------------------

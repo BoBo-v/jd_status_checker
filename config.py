@@ -39,9 +39,19 @@ VIEWPORT_HEIGHT = 844
 # 默认是否无头运行 (False 表示弹出浏览器窗口，不易被风控且方便人工过滑块/扫码)
 DEFAULT_HEADLESS = False
 
+# 是否默认启用无痕模式（True=无痕模式不留数据; False=持久化保留历史与Cookie）
+# 提示：京东对无任何历史Cookie的纯净无痕窗口风控更敏感，建议默认 False
+DEFAULT_INCOGNITO = False
+
+# 遇安全验证时，是否在终端暂停并等待人工在浏览器中完成验证后继续 (True=人机协作过验)
+AUTO_PAUSE_ON_CAPTCHA = True
+
+# 当触发风控被拦截时，是否自动清理当前会话的 Cookie 与缓存追踪标识
+CLEAR_CACHE_ON_RISK = False
+
 # 每次检测之间的随机延时范围（秒）
-DELAY_MIN = 3.0
-DELAY_MAX = 6.0
+DELAY_MIN = 3.5
+DELAY_MAX = 7.0
 
 # 页面加载超时（秒）
 PAGE_LOAD_TIMEOUT = 15.0
