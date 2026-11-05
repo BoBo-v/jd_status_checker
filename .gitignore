@@ -41,3 +41,5 @@ error_screenshots/*.png
 # Office temporary files
 ~$*.xlsx
 *.log
+*.spec
+

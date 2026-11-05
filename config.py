@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 """
 全局配置模块
+支持 Windows 与 macOS (Mac) 跨平台运行
 """
 import os
+import sys
 from pathlib import Path
 
 # 项目根目录
@@ -16,14 +18,19 @@ SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
 BROWSER_USER_DATA_DIR = BASE_DIR / "browser_data"
 BROWSER_USER_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-# 默认浏览器可执行文件备选路径
+# 默认浏览器可执行文件备选路径 (兼容 Windows 与 Mac)
 BROWSER_CANDIDATE_PATHS = [
+    # Windows 路径
     r"C:\Program Files\Google\Chrome\Application\chrome.exe",
     r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
     os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"),
     r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
     r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
     os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\Edge\Application\msedge.exe"),
+    # Mac (macOS) 路径
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+    "/Applications/Chromium.app/Contents/MacOS/Chromium",
 ]
 
 # 是否强制直连国内网络（绕过本机 Clash / VPN 代理，防止被境外机房IP触发必死风控）
