@@ -13,12 +13,11 @@ from config import (
     DELAY_MAX,
     SAVE_INTERVAL,
     DEFAULT_HEADLESS,
-    DEFAULT_INCOGNITO,
     AUTO_PAUSE_ON_CAPTCHA,
-    CLEAR_CACHE_ON_RISK,
+    BYPASS_PROXY,
 )
 from url_parser import to_mobile_h5_url
-from browser_manager import BrowserManager, clear_browser_cache
+from browser_manager import BrowserManager, clean_poisoned_browser_data
 from detector import detect_product_status, DetectionResult
 from excel_handler import ExcelHandler
 
@@ -29,9 +28,8 @@ class JDStatusInspector:
         excel_path: str,
         sheet_name: Optional[str] = None,
         headless: bool = DEFAULT_HEADLESS,
-        incognito: bool = DEFAULT_INCOGNITO,
         auto_pause_on_captcha: bool = AUTO_PAUSE_ON_CAPTCHA,
-        clear_cache_on_risk: bool = CLEAR_CACHE_ON_RISK,
+        bypass_proxy: bool = BYPASS_PROXY,
         skip_completed: bool = True,
         recheck_errors_only: bool = False,
         delay_range: tuple = (DELAY_MIN, DELAY_MAX),
@@ -41,9 +39,8 @@ class JDStatusInspector:
         self.excel_path = excel_path
         self.sheet_name = sheet_name
         self.headless = headless
-        self.incognito = incognito
         self.auto_pause_on_captcha = auto_pause_on_captcha
-        self.clear_cache_on_risk = clear_cache_on_risk
+        self.bypass_proxy = bypass_proxy
         self.skip_completed = skip_completed
         self.recheck_errors_only = recheck_errors_only
         self.delay_min, self.delay_max = delay_range
@@ -69,9 +66,8 @@ class JDStatusInspector:
         print("          京东商品状态自动化巡检系统 (DrissionPage)")
         print("=" * 65)
         print(f"[*] 目标表格: {self.excel_path}")
-        print(f"[*] 运行模式: {'无头后台模式' if self.headless else '有界面模式（支持人工辅助过验）'}")
-        print(f"[*] 浏览环境: {'无痕独立会话 (Incognito)' if self.incognito else '持久化会话 (保留登录与Cookie缓存)'}")
-        print(f"[*] 安全验证暂停: {'已启用 (遇滑块/CFE暂停等待人工操作)' if self.auto_pause_on_captcha and not self.headless else '未启用 (自动跳过并标记待查)'}")
+        print(f"[*] 运行模式: {'无头后台模式' if self.headless else '有界面模式'}")
+        print(f"[*] 网络直连: {'强制国内直连 (已绕过VPN/代理)' if self.bypass_proxy else '系统默认网络'}")
         print(f"[*] 断点续传: {'开启（跳过已标记行）' if self.skip_completed else '关闭（重新检测全部）'}")
         print(f"[*] 请求随机延时: {self.delay_min} ~ {self.delay_max} 秒")
         print("=" * 65 + "\n")
@@ -102,11 +98,11 @@ class JDStatusInspector:
         # 启动浏览器驱动
         bm = BrowserManager(
             headless=self.headless,
-            incognito=self.incognito,
             custom_browser_path=self.custom_browser_path,
+            bypass_proxy=self.bypass_proxy,
         )
         try:
-            print("[*] 正在启动移动端仿真浏览器环境...")
+            print("[*] 正在启动真实指纹浏览器环境...")
             page = bm.start()
             print("[+] 浏览器初始化完毕，开始逐行巡检...\n")
 
@@ -125,15 +121,13 @@ class JDStatusInspector:
                     print(f"    [>] SKU: {sku_id} -> 访问: {mobile_url}")
                     res: DetectionResult = detect_product_status(page, sku_id, mobile_url)
 
-                    # -------------------------------------------------------------
-                    # 人机协作交互机制：遇到 CFE 购物无忧 / 验证码风控时暂停并等待
-                    # -------------------------------------------------------------
+                    # 遇到罕见风控时的人机交互暂停
                     if res.is_captcha and self.auto_pause_on_captcha and not self.headless:
                         print("\n" + "!" * 65)
-                        print(" [!] 检测到安全验证拦截: 【验证一下，购物无忧】或滑块验证码")
-                        print(" [*] 请直接在弹出的浏览器窗口中点击【快速验证】并完成验证。")
-                        print(" [*] 验证成功通过后，回到本控制台按 [Enter 回车键] 自动重新检测！")
-                        print(" [*] (若想放弃本次验证并跳过此商品，请输入 s 并按回车)")
+                        print(" [!] 检测到验证码提示")
+                        print(" [*] 请在弹出的浏览器窗口中完成验证。")
+                        print(" [*] 操作完成后，回到本控制台按 [Enter 回车键] 自动重新检测！")
+                        print(" [*] (若想跳过此商品，请输入 s 并按回车)")
                         print("!" * 65)
                         try:
                             user_choice = input(">> 验证完成后按回车继续 (输入 s 跳过): ").strip().lower()
@@ -146,10 +140,6 @@ class JDStatusInspector:
                             res = detect_product_status(page, sku_id, mobile_url)
                         else:
                             print("    [-] 用户选择跳过当前验证。")
-
-                    # 如果启用了风控时自动清除缓存
-                    if res.is_risk and self.clear_cache_on_risk:
-                        clear_browser_cache(page)
 
                     # 格式化输出状态
                     status_text = "正常在售" if res.status == 0 else ("已下架" if res.status == 1 else str(res.status))

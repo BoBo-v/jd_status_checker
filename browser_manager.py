@@ -1,22 +1,22 @@
 # -*- coding: utf-8 -*-
 """
 浏览器驱动与环境管理模块
-基于 DrissionPage 实现移动端环境指纹模拟与真实浏览器驱动管理
+基于 DrissionPage 实现原生真实指纹驱动与直连网络配置
 """
 import os
 import sys
+import shutil
 from typing import Optional
 from DrissionPage import ChromiumPage, ChromiumOptions
 
 from config import (
     BROWSER_CANDIDATE_PATHS,
     BROWSER_USER_DATA_DIR,
-    MOBILE_USER_AGENT,
     VIEWPORT_WIDTH,
     VIEWPORT_HEIGHT,
     DEFAULT_HEADLESS,
-    DEFAULT_INCOGNITO,
     PAGE_LOAD_TIMEOUT,
+    BYPASS_PROXY,
 )
 
 
@@ -34,15 +34,27 @@ def find_browser_executable(custom_path: Optional[str] = None) -> Optional[str]:
     return None
 
 
+def clean_poisoned_browser_data():
+    """
+    清理可能被京东标记为黑名单会话的历史缓存目录
+    """
+    if BROWSER_USER_DATA_DIR.exists():
+        try:
+            shutil.rmtree(BROWSER_USER_DATA_DIR, ignore_errors=True)
+            BROWSER_USER_DATA_DIR.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
+
+
 def create_browser_options(
     headless: bool = DEFAULT_HEADLESS,
-    incognito: bool = DEFAULT_INCOGNITO,
     custom_browser_path: Optional[str] = None,
     user_data_path: Optional[str] = None,
+    bypass_proxy: bool = BYPASS_PROXY,
 ) -> ChromiumOptions:
     """
     构造 DrissionPage 的 ChromiumOptions 配置
-    移除引发警告的自动化命令行标志，注入移动端触屏支持与免检参数
+    使用浏览器原生 100% 真实指纹（避免伪造 UA 导致的 Sec-CH-UA 指纹矛盾），并强制直连避免境外代理风控
     """
     co = ChromiumOptions()
 
@@ -51,48 +63,29 @@ def create_browser_options(
     if browser_exe:
         co.set_browser_path(browser_exe)
 
-    # 2. 设置无痕模式或持久化用户数据目录
-    if incognito:
-        co.incognito(True)
-    else:
-        profile_dir = user_data_path or str(BROWSER_USER_DATA_DIR)
-        co.set_user_data_path(profile_dir)
+    # 2. 设置持久化用户数据目录
+    profile_dir = user_data_path or str(BROWSER_USER_DATA_DIR)
+    co.set_user_data_path(profile_dir)
 
-    # 3. 注入移动端 User-Agent
-    co.set_user_agent(MOBILE_USER_AGENT)
+    # 3. 绕过代理直接访问国内网络（彻底杜绝 VPN/Clash 导向境外机房触发假滑块死循环）
+    if bypass_proxy:
+        co.set_argument("--no-proxy-server")
 
-    # 4. 优化浏览器参数：
-    # 注意：绝对不要添加 --disable-blink-features=AutomationControlled，否则会被浏览器弹窗告警且被风控识别！
+    # 4. 保持真实原生指纹参数，不强行注入假 UA
     co.set_argument("--no-first-run")
     co.set_argument("--no-default-browser-check")
     co.set_argument(f"--window-size={VIEWPORT_WIDTH + 80},{VIEWPORT_HEIGHT + 150}")
 
-    # 5. 注入触屏与移动视口支持 (模拟真实手机交互)
-    co.set_argument("--enable-touch-events")
-    co.set_argument("--touch-events=enabled")
-    co.set_argument("--enable-viewport")
-
-    # 6. 自动分配未被占用的端口
+    # 5. 自动分配未被占用的端口
     co.auto_port()
 
-    # 7. 设置无头模式
+    # 6. 设置无头模式
     co.headless(headless)
 
-    # 8. 设置页面加载超时时间
+    # 7. 设置页面加载超时时间
     co.set_timeouts(base=PAGE_LOAD_TIMEOUT, page_load=PAGE_LOAD_TIMEOUT)
 
     return co
-
-
-def clear_browser_cache(page: ChromiumPage):
-    """
-    清空当前会话的 Cookie、本地存储与缓存，清除风控追踪标识
-    """
-    try:
-        page.clear_cache(session_storage=True, local_storage=True, cache=True, cookies=True)
-        print("[*] 已成功清空当前浏览器会话的 Cookie 与缓存数据！")
-    except Exception as e:
-        print(f"[-] 清空缓存失败: {e}")
 
 
 class BrowserManager:
@@ -103,12 +96,12 @@ class BrowserManager:
     def __init__(
         self,
         headless: bool = DEFAULT_HEADLESS,
-        incognito: bool = DEFAULT_INCOGNITO,
         custom_browser_path: Optional[str] = None,
+        bypass_proxy: bool = BYPASS_PROXY,
     ):
         self.headless = headless
-        self.incognito = incognito
         self.custom_browser_path = custom_browser_path
+        self.bypass_proxy = bypass_proxy
         self.page: Optional[ChromiumPage] = None
 
     def start(self) -> ChromiumPage:
@@ -118,12 +111,12 @@ class BrowserManager:
         if self.page is None:
             options = create_browser_options(
                 headless=self.headless,
-                incognito=self.incognito,
                 custom_browser_path=self.custom_browser_path,
+                bypass_proxy=self.bypass_proxy,
             )
             self.page = ChromiumPage(options)
             try:
-                # 调整页面窗口尺寸与移动端视口
+                # 调整页面窗口尺寸以完美适配移动端 H5 布局
                 self.page.set.window.size(VIEWPORT_WIDTH, VIEWPORT_HEIGHT)
             except Exception:
                 pass

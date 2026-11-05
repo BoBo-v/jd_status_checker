@@ -26,38 +26,28 @@ BROWSER_CANDIDATE_PATHS = [
     os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\Edge\Application\msedge.exe"),
 ]
 
-# 移动端伪装 User-Agent (iPhone 15 Safari / Android Chrome)
-MOBILE_USER_AGENT = (
-    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) "
-    "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1"
-)
+# 是否强制直连国内网络（绕过本机 Clash / VPN 代理，防止被境外机房IP触发必死风控）
+BYPASS_PROXY = True
 
-# 视口尺寸 (模拟手机屏幕)
-VIEWPORT_WIDTH = 390
-VIEWPORT_HEIGHT = 844
+# 视口尺寸 (适合移动 H5 排版)
+VIEWPORT_WIDTH = 414
+VIEWPORT_HEIGHT = 896
 
-# 默认是否无头运行 (False 表示弹出浏览器窗口，不易被风控且方便人工过滑块/扫码)
+# 默认是否无头运行 (False 表示弹出浏览器窗口)
 DEFAULT_HEADLESS = False
 
-# 是否默认启用无痕模式（True=无痕模式不留数据; False=持久化保留历史与Cookie）
-# 提示：京东对无任何历史Cookie的纯净无痕窗口风控更敏感，建议默认 False
-DEFAULT_INCOGNITO = False
-
-# 遇安全验证时，是否在终端暂停并等待人工在浏览器中完成验证后继续 (True=人机协作过验)
+# 遇安全验证时，是否在终端暂停并等待人工在浏览器中完成验证后继续
 AUTO_PAUSE_ON_CAPTCHA = True
 
-# 当触发风控被拦截时，是否自动清理当前会话的 Cookie 与缓存追踪标识
-CLEAR_CACHE_ON_RISK = False
-
 # 每次检测之间的随机延时范围（秒）
-DELAY_MIN = 3.5
-DELAY_MAX = 7.0
+DELAY_MIN = 2.5
+DELAY_MAX = 5.0
 
 # 页面加载超时（秒）
 PAGE_LOAD_TIMEOUT = 15.0
 
 # 页面打开后等待 DOM 渲染时间（秒）
-PAGE_WAIT_AFTER_LOAD = 2.5
+PAGE_WAIT_AFTER_LOAD = 2.0
 
 # 失败重试次数
 MAX_RETRIES = 2

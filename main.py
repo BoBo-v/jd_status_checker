@@ -11,9 +11,8 @@ from typing import List
 
 from config import (
     DEFAULT_HEADLESS,
-    DEFAULT_INCOGNITO,
     AUTO_PAUSE_ON_CAPTCHA,
-    CLEAR_CACHE_ON_RISK,
+    BYPASS_PROXY,
     DELAY_MIN,
     DELAY_MAX,
     SAVE_INTERVAL,
@@ -96,12 +95,8 @@ def interactive_menu() -> dict:
             selected_excel = create_sample_excel()
 
     # 询问是否无头运行
-    hl_input = input("\n是否使用无头模式（后台静默运行，不弹窗）？[y/N，默认 N (弹出窗口方便手动过验)]: ").strip().lower()
+    hl_input = input("\n是否使用无头静默模式（后台运行不弹窗）？[y/N，默认 N (弹出窗口更安全)]: ").strip().lower()
     headless = True if hl_input in ("y", "yes") else False
-
-    # 询问是否开启无痕模式
-    ic_input = input("是否启用无痕浏览器模式（不保留历史与Cookie）？[y/N，默认 N (持久化保留登录态)]: ").strip().lower()
-    incognito = True if ic_input in ("y", "yes") else False
 
     # 询问是否断点续传
     skip_input = input("是否启用断点续传（自动跳过已有 0 或 1 结果的行）？[Y/n，默认 Y]: ").strip().lower()
@@ -110,7 +105,6 @@ def interactive_menu() -> dict:
     return {
         "excel_path": selected_excel,
         "headless": headless,
-        "incognito": incognito,
         "skip_completed": skip_completed,
     }
 
@@ -128,9 +122,7 @@ def main():
     parser.add_argument("--excel", "-e", type=str, help="待检测的 Excel 文件绝对路径")
     parser.add_argument("--sheet", "-s", type=str, default=None, help="指定工作表名称（默认活动表）")
     parser.add_argument("--headless", action="store_true", help="启用无头静默模式（默认显示浏览器窗口）")
-    parser.add_argument("--incognito", action="store_true", help="启用无痕模式（不保留缓存与Cookie）")
-    parser.add_argument("--no-pause", action="store_true", help="遇到安全验证不暂停，直接标记为待查并跳过")
-    parser.add_argument("--clear-on-risk", action="store_true", help="触发风控被拦截时自动清空会话 Cookie 与缓存")
+    parser.add_argument("--no-bypass-proxy", action="store_true", help="不绕过代理（使用系统默认代理网络）")
     parser.add_argument("--rerun-all", action="store_true", help="强制重新检测全部数据，不跳过已完成项")
     parser.add_argument("--recheck-errors", action="store_true", help="仅重跑状态为待查或异常的记录")
     parser.add_argument("--delay-min", type=float, default=DELAY_MIN, help="最小停顿延时（秒）")
@@ -144,32 +136,27 @@ def main():
         create_sample_excel()
         return
 
+    bypass_proxy = not args.no_bypass_proxy
+
     if args.excel:
         excel_path = args.excel
         headless = args.headless
-        incognito = args.incognito
         skip_completed = not args.rerun_all
         recheck_errors = args.recheck_errors
-        auto_pause = not args.no_pause
-        clear_cache = args.clear_on_risk
     else:
         # 进入交互式向导
         config = interactive_menu()
         excel_path = config["excel_path"]
         headless = config["headless"]
-        incognito = config["incognito"]
         skip_completed = config["skip_completed"]
         recheck_errors = False
-        auto_pause = AUTO_PAUSE_ON_CAPTCHA
-        clear_cache = CLEAR_CACHE_ON_RISK
 
     inspector = JDStatusInspector(
         excel_path=excel_path,
         sheet_name=args.sheet,
         headless=headless,
-        incognito=incognito,
-        auto_pause_on_captcha=auto_pause,
-        clear_cache_on_risk=clear_cache,
+        auto_pause_on_captcha=AUTO_PAUSE_ON_CAPTCHA,
+        bypass_proxy=bypass_proxy,
         skip_completed=skip_completed,
         recheck_errors_only=recheck_errors,
         delay_range=(args.delay_min, args.delay_max),
