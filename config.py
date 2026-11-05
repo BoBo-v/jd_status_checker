@@ -36,6 +36,12 @@ BROWSER_CANDIDATE_PATHS = [
 # 是否强制直连国内网络（绕过本机 Clash / VPN 代理，防止被境外机房IP触发必死风控）
 BYPASS_PROXY = True
 
+# 核心防封逻辑：当检测到页面跳转提示登录时，是否自动关闭整个浏览器重新开启并重试
+AUTO_RESTART_ON_LOGIN = True
+
+# 登录拦截自动重启浏览器的最大重试次数
+MAX_LOGIN_RESTART_RETRIES = 2
+
 # 视口尺寸 (适合移动 H5 排版)
 VIEWPORT_WIDTH = 414
 VIEWPORT_HEIGHT = 896
@@ -44,7 +50,7 @@ VIEWPORT_HEIGHT = 896
 DEFAULT_HEADLESS = False
 
 # 遇安全验证时，是否在终端暂停并等待人工在浏览器中完成验证后继续
-AUTO_PAUSE_ON_CAPTCHA = True
+AUTO_PAUSE_ON_CAPTCHA = False
 
 # 每次检测之间的随机延时范围（秒）
 DELAY_MIN = 2.5

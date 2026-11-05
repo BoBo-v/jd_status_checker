@@ -14,10 +14,12 @@ from config import (
     SAVE_INTERVAL,
     DEFAULT_HEADLESS,
     AUTO_PAUSE_ON_CAPTCHA,
+    AUTO_RESTART_ON_LOGIN,
+    MAX_LOGIN_RESTART_RETRIES,
     BYPASS_PROXY,
 )
 from url_parser import to_mobile_h5_url
-from browser_manager import BrowserManager, clean_poisoned_browser_data
+from browser_manager import BrowserManager
 from detector import detect_product_status, DetectionResult
 from excel_handler import ExcelHandler
 
@@ -29,6 +31,8 @@ class JDStatusInspector:
         sheet_name: Optional[str] = None,
         headless: bool = DEFAULT_HEADLESS,
         auto_pause_on_captcha: bool = AUTO_PAUSE_ON_CAPTCHA,
+        auto_restart_on_login: bool = AUTO_RESTART_ON_LOGIN,
+        max_login_retries: int = MAX_LOGIN_RESTART_RETRIES,
         bypass_proxy: bool = BYPASS_PROXY,
         skip_completed: bool = True,
         recheck_errors_only: bool = False,
@@ -40,6 +44,8 @@ class JDStatusInspector:
         self.sheet_name = sheet_name
         self.headless = headless
         self.auto_pause_on_captcha = auto_pause_on_captcha
+        self.auto_restart_on_login = auto_restart_on_login
+        self.max_login_retries = max(1, max_login_retries)
         self.bypass_proxy = bypass_proxy
         self.skip_completed = skip_completed
         self.recheck_errors_only = recheck_errors_only
@@ -67,6 +73,7 @@ class JDStatusInspector:
         print("=" * 65)
         print(f"[*] 目标表格: {self.excel_path}")
         print(f"[*] 运行模式: {'无头后台模式' if self.headless else '有界面模式'}")
+        print(f"[*] 登录自愈: {'已开启（遇到提示登录自动关闭浏览器并重启重试）' if self.auto_restart_on_login else '未开启'}")
         print(f"[*] 网络直连: {'强制国内直连 (已绕过VPN/代理)' if self.bypass_proxy else '系统默认网络'}")
         print(f"[*] 断点续传: {'开启（跳过已标记行）' if self.skip_completed else '关闭（重新检测全部）'}")
         print(f"[*] 请求随机延时: {self.delay_min} ~ {self.delay_max} 秒")
@@ -121,25 +128,21 @@ class JDStatusInspector:
                     print(f"    [>] SKU: {sku_id} -> 访问: {mobile_url}")
                     res: DetectionResult = detect_product_status(page, sku_id, mobile_url)
 
-                    # 遇到罕见风控时的人机交互暂停
-                    if res.is_captcha and self.auto_pause_on_captcha and not self.headless:
-                        print("\n" + "!" * 65)
-                        print(" [!] 检测到验证码提示")
-                        print(" [*] 请在弹出的浏览器窗口中完成验证。")
-                        print(" [*] 操作完成后，回到本控制台按 [Enter 回车键] 自动重新检测！")
-                        print(" [*] (若想跳过此商品，请输入 s 并按回车)")
-                        print("!" * 65)
-                        try:
-                            user_choice = input(">> 验证完成后按回车继续 (输入 s 跳过): ").strip().lower()
-                        except (EOFError, KeyboardInterrupt):
-                            user_choice = "s"
-
-                        if user_choice not in ("s", "skip"):
-                            print("    [*] 正在重新检测当前商品...")
+                    # -------------------------------------------------------------
+                    # 核心自动恢复机制：遇到提示登录/风控跳转时，自动彻底关闭浏览器重新开启重试
+                    # -------------------------------------------------------------
+                    if res.is_login and self.auto_restart_on_login:
+                        for retry_idx in range(1, self.max_login_retries + 1):
+                            print(f"    [!] 检测到提示登录/风控拦截，执行【关闭浏览器并重新开启】恢复操作 ({retry_idx}/{self.max_login_retries})...")
+                            page = bm.restart(clean_session=True)
                             time.sleep(1.5)
                             res = detect_product_status(page, sku_id, mobile_url)
+                            if not res.is_login:
+                                status_text = "正常在售" if res.status == 0 else ("已下架" if res.status == 1 else str(res.status))
+                                print(f"    [√] 重启浏览器后成功恢复！检测结果: 【{status_text}】(值={res.status})")
+                                break
                         else:
-                            print("    [-] 用户选择跳过当前验证。")
+                            print(f"    [-] 重启浏览器 {self.max_login_retries} 次后仍触发登录拦截，标记为待查并继续。")
 
                     # 格式化输出状态
                     status_text = "正常在售" if res.status == 0 else ("已下架" if res.status == 1 else str(res.status))

@@ -12,6 +12,8 @@ from typing import List
 from config import (
     DEFAULT_HEADLESS,
     AUTO_PAUSE_ON_CAPTCHA,
+    AUTO_RESTART_ON_LOGIN,
+    MAX_LOGIN_RESTART_RETRIES,
     BYPASS_PROXY,
     DELAY_MIN,
     DELAY_MAX,
@@ -123,6 +125,8 @@ def main():
     parser.add_argument("--sheet", "-s", type=str, default=None, help="指定工作表名称（默认活动表）")
     parser.add_argument("--headless", action="store_true", help="启用无头静默模式（默认显示浏览器窗口）")
     parser.add_argument("--no-bypass-proxy", action="store_true", help="不绕过代理（使用系统默认代理网络）")
+    parser.add_argument("--no-auto-restart", action="store_true", help="禁用遇登录拦截时自动关闭并重启浏览器")
+    parser.add_argument("--login-retries", type=int, default=MAX_LOGIN_RESTART_RETRIES, help="遇到登录拦截时自动重启浏览器的最大重试次数")
     parser.add_argument("--rerun-all", action="store_true", help="强制重新检测全部数据，不跳过已完成项")
     parser.add_argument("--recheck-errors", action="store_true", help="仅重跑状态为待查或异常的记录")
     parser.add_argument("--delay-min", type=float, default=DELAY_MIN, help="最小停顿延时（秒）")
@@ -137,6 +141,7 @@ def main():
         return
 
     bypass_proxy = not args.no_bypass_proxy
+    auto_restart = not args.no_auto_restart
 
     if args.excel:
         excel_path = args.excel
@@ -156,6 +161,8 @@ def main():
         sheet_name=args.sheet,
         headless=headless,
         auto_pause_on_captcha=AUTO_PAUSE_ON_CAPTCHA,
+        auto_restart_on_login=auto_restart,
+        max_login_retries=args.login_retries,
         bypass_proxy=bypass_proxy,
         skip_completed=skip_completed,
         recheck_errors_only=recheck_errors,

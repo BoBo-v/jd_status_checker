@@ -21,7 +21,8 @@ class DetectionResult(NamedTuple):
     remark: str              # 状态详细说明
     screenshot_path: Optional[str] = None
     is_risk: bool = False    # 是否触发了风控或登录拦截
-    is_captcha: bool = False # 是否触发了需要人机交互的安全验证（如 CFE 快速验证、滑块）
+    is_captcha: bool = False # 是否触发了需要人机交互的安全验证
+    is_login: bool = False   # 是否触发了提示登录/强制登录跳转
 
 
 def take_error_screenshot(page: ChromiumPage, sku_id: str) -> str:
@@ -56,13 +57,26 @@ def detect_product_status(
         current_url = page.url or ""
 
         # -------------------------------------------------------------
-        # 判定分支 1: 触发登录拦截 (plogin / passport 跳转)
+        # 判定分支 1: 触发登录拦截 (plogin / passport 跳转或弹窗)
         # -------------------------------------------------------------
-        if (
+        is_login_url = (
             "plogin.m.jd.com" in current_url
             or "passport.m.jd.com" in current_url
             or "passport.jd.com" in current_url
-        ):
+        )
+
+        # 提取页面全文（包含纯文本与源码）
+        html_content = page.html or ""
+        body_ele = page.ele("tag:body")
+        page_text = body_ele.text if body_ele else ""
+
+        is_login_modal = (
+            "请登录后查看" in page_text
+            or "立即登录" in page_text
+            and ("账号密码登录" in page_text or "短信验证码登录" in page_text)
+        )
+
+        if is_login_url or is_login_modal:
             img_path = take_error_screenshot(page, sku_id)
             return DetectionResult(
                 sku_id=sku_id,
@@ -71,16 +85,11 @@ def detect_product_status(
                 screenshot_path=img_path,
                 is_risk=True,
                 is_captcha=False,
+                is_login=True,
             )
-
-        # 提取页面全文（包含纯文本与源码）
-        html_content = page.html or ""
-        body_ele = page.ele("tag:body")
-        page_text = body_ele.text if body_ele else ""
 
         # -------------------------------------------------------------
         # 判定分支 2: 触发 CFE 安全风控拦截页与滑块验证
-        # 特征：cfe.m.jd.com、"验证一下，购物无忧"、"快速验证" 等
         # -------------------------------------------------------------
         is_cfe_page = (
             "cfe.m.jd.com" in current_url
@@ -103,14 +112,15 @@ def detect_product_status(
 
         if is_cfe_page or has_risk_text:
             img_path = take_error_screenshot(page, sku_id)
-            remark_msg = "触发安全验证（CFE购物无忧拦截）" if is_cfe_page else "触发验证码风控，需验证"
+            remark_msg = "触发安全验证（CFE拦截）" if is_cfe_page else "触发验证码风控，需验证"
             return DetectionResult(
                 sku_id=sku_id,
                 status="待查",
                 remark=remark_msg,
                 screenshot_path=img_path,
                 is_risk=True,
-                is_captcha=True,  # 标记为人机验证，触发暂停等待人工处理逻辑
+                is_captcha=True,
+                is_login=True,  # CFE 也可以通过重启浏览器刷新状态
             )
 
         # -------------------------------------------------------------

@@ -5,6 +5,7 @@
 """
 import os
 import sys
+import time
 import shutil
 from typing import Optional
 from DrissionPage import ChromiumPage, ChromiumOptions
@@ -124,7 +125,7 @@ class BrowserManager:
 
     def stop(self):
         """
-        安全退出浏览器
+        安全退出当前浏览器
         """
         if self.page:
             try:
@@ -133,6 +134,17 @@ class BrowserManager:
                 pass
             finally:
                 self.page = None
+
+    def restart(self, clean_session: bool = True) -> ChromiumPage:
+        """
+        核心恢复功能：完全退出当前浏览器进程，清理缓存后重新打开全新浏览器
+        用于在遇到登录跳转提示时瞬间刷新环境状态
+        """
+        self.stop()
+        if clean_session:
+            clean_poisoned_browser_data()
+        time.sleep(1.0)
+        return self.start()
 
     def __enter__(self) -> ChromiumPage:
         return self.start()
