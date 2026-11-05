@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 """
 核心巡检调度模块
-协调 Excel 读写、浏览器自动化、URL 提取与多状态判定的完整巡检流程
+协调 Excel 读写、多工作表（分表）解析、浏览器自动化、URL 提取与多状态判定的完整巡检流程
 """
 import sys
 import time
 import random
-from typing import Optional, Dict
+from typing import Optional, Dict, Union, List
 
 from config import (
     DELAY_MIN,
@@ -28,7 +28,7 @@ class JDStatusInspector:
     def __init__(
         self,
         excel_path: str,
-        sheet_name: Optional[str] = None,
+        target_sheets: Optional[Union[str, List[str]]] = None,
         headless: bool = DEFAULT_HEADLESS,
         auto_pause_on_captcha: bool = AUTO_PAUSE_ON_CAPTCHA,
         auto_restart_on_login: bool = AUTO_RESTART_ON_LOGIN,
@@ -41,7 +41,7 @@ class JDStatusInspector:
         custom_browser_path: Optional[str] = None,
     ):
         self.excel_path = excel_path
-        self.sheet_name = sheet_name
+        self.target_sheets = target_sheets
         self.headless = headless
         self.auto_pause_on_captcha = auto_pause_on_captcha
         self.auto_restart_on_login = auto_restart_on_login
@@ -72,6 +72,7 @@ class JDStatusInspector:
         print("          京东商品状态自动化巡检系统 (DrissionPage)")
         print("=" * 65)
         print(f"[*] 目标表格: {self.excel_path}")
+        print(f"[*] 原表保护: 100% 只读流式加载（绝不修改原表，商品主图 100% 完好无损！）")
         print(f"[*] 运行模式: {'无头后台模式' if self.headless else '有界面模式'}")
         print(f"[*] 登录自愈: {'已开启（遇到提示登录自动关闭浏览器并重启重试）' if self.auto_restart_on_login else '未开启'}")
         print(f"[*] 网络直连: {'强制国内直连 (已绕过VPN/代理)' if self.bypass_proxy else '系统默认网络'}")
@@ -79,12 +80,9 @@ class JDStatusInspector:
         print(f"[*] 请求随机延时: {self.delay_min} ~ {self.delay_max} 秒")
         print("=" * 65 + "\n")
 
-        excel = ExcelHandler(self.excel_path, self.sheet_name)
+        excel = ExcelHandler(self.excel_path, self.target_sheets)
         total_items = excel.count_total_items()
         self.stats["total"] = total_items
-
-        print(f"[+] 成功加载表格，共包含 {total_items} 条待核验记录")
-        print(f"[+] 识别到关键列位置: {excel.col_indices}\n")
 
         # 预先筛选待处理行
         pending_rows = list(
@@ -115,14 +113,14 @@ class JDStatusInspector:
 
             processed_count = 0
 
-            for idx, (row_idx, raw_url, current_status, current_remark) in enumerate(pending_rows, start=1):
+            for idx, (sheet_name, row_idx, raw_url, current_status, current_remark) in enumerate(pending_rows, start=1):
                 sku_id, mobile_url = to_mobile_h5_url(raw_url)
 
-                print(f"[{idx}/{len(pending_rows)}] 行 {row_idx:3d} | 原始输入: {str(raw_url)[:35]}...")
+                print(f"[{idx}/{len(pending_rows)}] 【{sheet_name}】行 {row_idx:3d} | 原始输入: {str(raw_url)[:30]}...")
 
                 if not sku_id:
                     print(f"    [-] 链接无效，无法提取 SKU ID")
-                    excel.update_row(row_idx, status="异常", remark="商品链接格式错误，无法提取SKU")
+                    excel.update_row(sheet_name, row_idx, status="异常", remark="商品链接格式错误，无法提取SKU")
                     self.stats["invalid_url"] += 1
                 else:
                     print(f"    [>] SKU: {sku_id} -> 访问: {mobile_url}")
@@ -158,8 +156,8 @@ class JDStatusInspector:
                     else:
                         self.stats["risk_or_manual"] += 1
 
-                    # 回写数据至 Excel
-                    excel.update_row(row_idx, status=res.status, remark=res.remark)
+                    # 回写数据至轻量结果表格
+                    excel.update_row(sheet_name, row_idx, status=res.status, remark=res.remark)
 
                 self.stats["checked"] += 1
                 processed_count += 1
@@ -175,7 +173,9 @@ class JDStatusInspector:
 
             # 最终保存
             excel.save()
-            print("\n[+] 全部检测处理完毕，表格数据已实时回写保存成功！")
+            print("\n[+] 全部检测处理完毕！")
+            print(f"[√] 巡检汇总结果已保存至：{excel.result_path.name}")
+            print(f"    完整路径: {excel.result_path}")
 
         except KeyboardInterrupt:
             print("\n\n[!] 检测到用户手动中断 (Ctrl+C)！正在保存已完成的数据...")

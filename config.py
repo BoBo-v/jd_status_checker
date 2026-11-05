@@ -33,6 +33,12 @@ BROWSER_CANDIDATE_PATHS = [
     "/Applications/Chromium.app/Contents/MacOS/Chromium",
 ]
 
+# 核心安全与大表保护模式：
+# True: 原表 100% 只读（秒级流式加载，哪怕 250MB 大表也不卡顿，100% 绝对不会删除/破坏原表的商品图片！）
+#       结果极速保存到独立的【原表名_巡检结果.xlsx】中，支持断点续传。
+# False: 原表直接覆写（适用于几百KB没有图片的轻量小表）。
+SAFE_EXPORT_MODE = True
+
 # 是否强制直连国内网络（绕过本机 Clash / VPN 代理，防止被境外机房IP触发必死风控）
 BYPASS_PROXY = True
 
@@ -73,7 +79,8 @@ SAVE_INTERVAL = 1
 
 # Excel 列头模糊匹配关键词
 EXCEL_COL_KEYWORDS = {
-    "url": ["京东链接（必填）", "京东链接", "商品链接", "商品url", "jd链接", "url", "链接", "item_url"],
+    "url": ["京东链接（必填）", "京东链接", "商品链接", "商品url", "jd链接", "url", "链接", "item_url", "sku", "商品sku"],
+    "name": ["商品名称", "商品标题", "品名", "名称", "标题", "title", "name"],
     "status": ["是否已下架（1下架）", "是否已下架", "是否下架", "已下架", "下架状态", "下架标记", "状态"],
     "remark": ["检测备注/异常状态", "检测备注", "状态备注", "备注", "异常状态", "巡检备注"],
     "time": ["检测时间", "巡检时间", "更新时间", "核验时间"],

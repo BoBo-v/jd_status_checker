@@ -40,6 +40,7 @@ error_screenshots/*.png
 
 # Office temporary files
 ~$*.xlsx
+*_巡检结果.xlsx
 *.log
 *.spec
 
