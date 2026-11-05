@@ -28,23 +28,23 @@ from ui_menu import select_menu, select_checkbox_menu
 
 def scan_nearby_excels() -> List[Path]:
     """
-    智能搜索当前目录与桌面上的 .xlsx 文件，供用户快捷选择
+    智能搜索当前目录、程序所在目录与桌面上的 .xlsx 文件，供用户快捷选择
     """
     found = []
-    current_dir = Path(__file__).resolve().parent
+    search_dirs = [Path.cwd(), Path(__file__).resolve().parent]
+    if getattr(sys, "frozen", False):
+        search_dirs.append(Path(sys.executable).resolve().parent)
 
-    # 1. 当前目录及上级目录中的 xlsx
-    for p in current_dir.glob("*.xlsx"):
-        if not p.name.startswith("~$") and not p.name.endswith("_巡检结果.xlsx"):
-            found.append(p)
-
-    # 2. 桌面上的 xlsx
     desktop_dir = Path.home() / "Desktop"
     if desktop_dir.exists():
-        for p in desktop_dir.glob("*.xlsx"):
-            if not p.name.startswith("~$") and not p.name.endswith("_巡检结果.xlsx"):
-                if p not in found:
-                    found.append(p)
+        search_dirs.append(desktop_dir)
+
+    for d in search_dirs:
+        if d.exists():
+            for p in d.glob("*.xlsx"):
+                if not p.name.startswith("~$") and not p.name.endswith("_巡检结果.xlsx"):
+                    if p not in found:
+                        found.append(p)
 
     return found
 
