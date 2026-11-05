@@ -78,8 +78,15 @@ Mac 几乎全部自带 Python 3 环境，并且使用终端非常方便：
 # 指定 Excel 路径运行（默认巡检全部分表）
 python main.py --excel "你的商品表格.xlsx"
 
-# 巡检指定分表（如仅巡检“电脑电器”分表）
+# 从指定分表开始一直巡检到最后（支持输入分表序号或分表名）
+python main.py --excel "你的商品表格.xlsx" --start-sheet 3
+python main.py --excel "你的商品表格.xlsx" --start-sheet "个护美妆"
+
+# 仅巡检单张指定分表
 python main.py --excel "你的商品表格.xlsx" --sheet "电脑电器"
+
+# 巡检指定范围分表（如第 2 到第 4 张分表）
+python main.py --excel "你的商品表格.xlsx" --sheet "2-4"
 
 # 无头后台静默运行
 python main.py --excel "你的商品表格.xlsx" --headless

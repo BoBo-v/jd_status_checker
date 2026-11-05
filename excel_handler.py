@@ -61,6 +61,99 @@ def inspect_excel_sheets(file_path: Union[str, Path]) -> List[Dict[str, Any]]:
     return results
 
 
+def parse_sheet_selection(
+    user_input: Optional[Union[str, List[str]]],
+    all_sheet_names: List[str]
+) -> List[str]:
+    """
+    解析用户输入的分表选择表达式，返回需要处理的分表名称列表：
+    - None / "" / "A" / "ALL" / "全部": 全部工作表
+    - "3-" / "3+" / "从3开始" / "3及以后": 从第 3 个分表开始直到最后一个分表
+    - "3": 仅第 3 个分表
+    - "2-4" / "2~4" / "2到4": 第 2 到第 4 个分表
+    - "1,3,5" / "1，3，5" / "1 3 5": 指定的第 1、3、5 个分表
+    - "分表名-": 从该分表名开始直到最后
+    - "分表名": 匹配名称的分表
+    - list: 如果已经是列表，直接过滤返回
+    """
+    if not user_input or str(user_input).strip().upper() in ("A", "ALL", "全部"):
+        return list(all_sheet_names)
+
+    if isinstance(user_input, list):
+        return [s for s in user_input if s in all_sheet_names]
+
+    raw = str(user_input).strip()
+
+    # 1. 完全精确匹配工作表名称
+    if raw in all_sheet_names:
+        return [raw]
+
+    # 2. 从指定分表开始往后所有分表（如 "3-", "3+", "电脑办公-"）
+    if raw.endswith(("-", "+")):
+        prefix = raw[:-1].strip()
+        if prefix.isdigit():
+            idx = int(prefix)
+            if 1 <= idx <= len(all_sheet_names):
+                return all_sheet_names[idx - 1 :]
+            raise ValueError(f"分表序号 {idx} 超出范围 (有效范围: 1 ~ {len(all_sheet_names)})")
+        if prefix in all_sheet_names:
+            idx = all_sheet_names.index(prefix)
+            return all_sheet_names[idx:]
+
+    # 3. 中文语法："从3开始", "从第3个开始", "从电脑电器开始"
+    if raw.startswith("从"):
+        target = raw[1:].replace("开始", "").replace("及以后", "").replace("到最后", "").replace("第", "").replace("个", "").strip()
+        if target.isdigit():
+            idx = int(target)
+            if 1 <= idx <= len(all_sheet_names):
+                return all_sheet_names[idx - 1 :]
+            raise ValueError(f"分表序号 {idx} 超出范围 (有效范围: 1 ~ {len(all_sheet_names)})")
+        if target in all_sheet_names:
+            idx = all_sheet_names.index(target)
+            return all_sheet_names[idx:]
+
+    # 4. 连续范围语法："2-4", "2~4", "2:4", "2到4"
+    for sep in ("-", "~", ":", "到"):
+        if sep in raw:
+            parts = raw.split(sep, 1)
+            p1, p2 = parts[0].strip().replace("第", "").replace("个", ""), parts[1].strip().replace("第", "").replace("个", "")
+            if p1.isdigit() and p2.isdigit():
+                start, end = int(p1), int(p2)
+                if 1 <= start <= end <= len(all_sheet_names):
+                    return all_sheet_names[start - 1 : end]
+                raise ValueError(f"分表序号范围 {start}-{end} 无效 (有效范围: 1 ~ {len(all_sheet_names)})")
+
+    # 5. 逗号分隔的离散分表："1,3,5" 或 "1，3，5"
+    p_comma = [p.strip().replace("第", "").replace("个", "") for p in raw.replace("，", ",").replace(" ", ",").split(",") if p.strip()]
+    if p_comma and all(p.isdigit() for p in p_comma):
+        sel = []
+        for p in p_comma:
+            idx = int(p)
+            if 1 <= idx <= len(all_sheet_names):
+                name = all_sheet_names[idx - 1]
+                if name not in sel:
+                    sel.append(name)
+            else:
+                raise ValueError(f"分表序号 {idx} 超出范围 (有效范围: 1 ~ {len(all_sheet_names)})")
+        if sel:
+            return sel
+
+    # 6. 单个分表序号："3"
+    clean_digit = raw.replace("第", "").replace("个", "").strip()
+    if clean_digit.isdigit():
+        idx = int(clean_digit)
+        if 1 <= idx <= len(all_sheet_names):
+            return [all_sheet_names[idx - 1]]
+        raise ValueError(f"分表序号 {idx} 超出范围 (有效范围: 1 ~ {len(all_sheet_names)})")
+
+    # 7. 模糊匹配表名包含关键字
+    matched = [s for s in all_sheet_names if raw.lower() in s.lower()]
+    if matched:
+        return matched
+
+    raise ValueError(f"无法识别的分表选择: '{raw}'")
+
+
 class SafeExportExcelHandler:
     """
     【推荐】安全外挂导出模式
@@ -86,6 +179,7 @@ class SafeExportExcelHandler:
         self.result_wb: Optional[openpyxl.Workbook] = None
         self.result_ws = None
         self.existing_results: Dict[Tuple[str, int], Tuple[any, str]] = {}  # {(sheet_name, row_idx): (status, remark)}
+        self.result_row_map: Dict[Tuple[str, int], int] = {}  # {(sheet_name, row_idx): excel_row_number}
 
         self._load_and_parse()
 
@@ -100,14 +194,9 @@ class SafeExportExcelHandler:
         available_sheets = wb_read.sheetnames
 
         # 确定需要检测的分表列表
-        if not self.target_sheets or self.target_sheets == "ALL":
-            sheets_to_process = available_sheets
-        elif isinstance(self.target_sheets, str):
-            sheets_to_process = [self.target_sheets] if self.target_sheets in available_sheets else [available_sheets[0]]
-        else:
-            sheets_to_process = [s for s in self.target_sheets if s in available_sheets]
+        sheets_to_process = parse_sheet_selection(self.target_sheets, available_sheets)
 
-        print(f"[*] 目标巡检分表列表: {sheets_to_process}")
+        print(f"[*] 目标巡检分表列表 ({len(sheets_to_process)} 个): {sheets_to_process}")
 
         # 逐个分表只读流式抓取数据行
         for s_name in sheets_to_process:
@@ -215,7 +304,9 @@ class SafeExportExcelHandler:
                     remark_val = self.result_ws.cell(row=r, column=7).value
                     if s_name and row_num is not None:
                         try:
-                            self.existing_results[(s_name, int(row_num))] = (status_val, str(remark_val or ""))
+                            k = (s_name, int(row_num))
+                            self.existing_results[k] = (status_val, str(remark_val or ""))
+                            self.result_row_map[k] = r
                         except ValueError:
                             pass
                 print(f"[+] 历史结果读取完成，已包含 {len(self.existing_results)} 条已测记录（将自动跳过已完成项）\n")
@@ -295,17 +386,12 @@ class SafeExportExcelHandler:
         """
         t = check_time or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        # 查找该 (sheet_name, row_idx) 是否已存在于结果表中
-        target_row = None
-        for r in range(2, self.result_ws.max_row + 1):
-            s_val = str(self.result_ws.cell(row=r, column=1).value or "").strip()
-            row_val = self.result_ws.cell(row=r, column=2).value
-            if s_val == sheet_name and row_val == row_idx:
-                target_row = r
-                break
+        # 查找该 (sheet_name, row_idx) 是否已存在于结果表中（哈希 O(1) 极速秒级索引）
+        target_row = self.result_row_map.get((sheet_name, row_idx))
 
         if target_row is None:
             target_row = self.result_ws.max_row + 1
+            self.result_row_map[(sheet_name, row_idx)] = target_row
             item_info = next((d for d in self.rows_data if d["sheet_name"] == sheet_name and d["row_idx"] == row_idx), {})
             name_val = item_info.get("name", "")
             url_val = item_info.get("raw_url", "")

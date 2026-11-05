@@ -21,7 +21,7 @@ from config import (
     SAVE_INTERVAL,
 )
 from inspector import JDStatusInspector
-from excel_handler import inspect_excel_sheets
+from excel_handler import inspect_excel_sheets, parse_sheet_selection
 from create_sample_excel import create_sample_excel
 
 
@@ -103,23 +103,41 @@ def interactive_menu() -> dict:
     # 探测该表格内部包含的工作表（分表）
     target_sheets = "ALL"
     sheet_infos = inspect_excel_sheets(selected_excel)
+    all_sheet_names = [info["name"] for info in sheet_infos]
+
     if len(sheet_infos) > 1:
-        print(f"\n检测到该表格包含 {len(sheet_infos)} 个工作表（分表）：")
-        print("  [A] 巡检所有包含商品的分表（合并处理，推荐）")
+        print("\n" + "-" * 65)
+        print(f"检测到该表格包含 {len(sheet_infos)} 个工作表（分表）：")
         for idx, info in enumerate(sheet_infos, start=1):
             tag = "[含商品链接]" if info["has_goods"] else "[未发现链接]"
             print(f"  [{idx}] {info['name']} {tag}")
+        print("-" * 65)
+        print("【分表巡检范围与起始设置】：")
+        print("  • 直接按回车 或 输入 A ：巡检全部分表（从第 1 张开始跑完全部）")
+        print("  • 从指定分表开始       ：输入 [序号-]，如输入 '3-' 表示从第 3 张分表开始往后全部巡检！")
+        print("  • 仅巡检单张分表       ：输入单个序号，如输入 '3' 表示只巡检第 3 张分表")
+        print("  • 巡检指定范围         ：输入 [起始-结束]，如输入 '2-4' 表示巡检第 2 到第 4 张分表")
+        print("  • 巡检多张指定分表     ：输入如 '1,3,5' 仅巡检这几张分表")
+        print("-" * 65)
 
         while True:
-            s_choice = input(f"请选择要巡检的工作表序号 [A/{'/'.join(str(i) for i in range(1, len(sheet_infos)+1))}，默认 A]: ").strip().upper()
-            if not s_choice or s_choice == "A":
-                target_sheets = "ALL"
+            s_choice = input("请选择巡检分表范围或起始位置 [默认 A 全部]: ").strip()
+            try:
+                selected_list = parse_sheet_selection(s_choice, all_sheet_names)
+                if not selected_list:
+                    print("[!] 所选范围内未找到有效分表，请重新选择！")
+                    continue
+                target_sheets = selected_list
+                if len(target_sheets) == len(all_sheet_names):
+                    print(f"[√] 已选择：巡检全部分表 (共 {len(target_sheets)} 个)")
+                else:
+                    preview = " -> ".join([f"【{s}】" for s in target_sheets[:4]])
+                    if len(target_sheets) > 4:
+                        preview += f" ... 等共 {len(target_sheets)} 个分表"
+                    print(f"[√] 已设定巡检分表：{preview}")
                 break
-            elif s_choice.isdigit() and 1 <= int(s_choice) <= len(sheet_infos):
-                target_sheets = sheet_infos[int(s_choice) - 1]["name"]
-                break
-            else:
-                print("[!] 输入无效，请重新选择！")
+            except Exception as e:
+                print(f"[!] 输入有误: {e}，请重新输入！")
 
     # 询问是否无头运行
     hl_input = input("\n是否使用无头静默模式（后台运行不弹窗）？[y/N，默认 N (弹出窗口更安全)]: ").strip().lower()
@@ -147,7 +165,8 @@ def main():
 
     parser = argparse.ArgumentParser(description="京东商品上下架状态自动化巡检工具 (DrissionPage)")
     parser.add_argument("--excel", "-e", type=str, help="待检测的 Excel 文件绝对路径")
-    parser.add_argument("--sheet", "-s", type=str, default="ALL", help="指定分表名称或 ALL（默认 ALL 扫描所有包含链接的分表）")
+    parser.add_argument("--sheet", "-s", type=str, default="ALL", help="指定分表名称、序号范围（如 '3-' 从第3张表开始, '2-4', '1,3', 'ALL'）")
+    parser.add_argument("--start-sheet", type=str, default=None, help="从指定分表开始巡检（可输入分表序号如 3 或分表名称，将从该分表一直跑至最后）")
     parser.add_argument("--headless", action="store_true", help="启用无头静默模式（默认显示浏览器窗口）")
     parser.add_argument("--no-bypass-proxy", action="store_true", help="不绕过代理（使用系统默认代理网络）")
     parser.add_argument("--no-auto-restart", action="store_true", help="禁用遇登录拦截时自动关闭并重启浏览器")
@@ -170,7 +189,10 @@ def main():
 
     if args.excel:
         excel_path = args.excel
-        target_sheets = args.sheet
+        if args.start_sheet:
+            target_sheets = f"{args.start_sheet}-"
+        else:
+            target_sheets = args.sheet
         headless = args.headless
         skip_completed = not args.rerun_all
         recheck_errors = args.recheck_errors
