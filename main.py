@@ -23,6 +23,7 @@ from config import (
 from inspector import JDStatusInspector
 from excel_handler import inspect_excel_sheets, parse_sheet_selection
 from create_sample_excel import create_sample_excel
+from ui_menu import select_menu, select_checkbox_menu
 
 
 def scan_nearby_excels() -> List[Path]:
@@ -50,7 +51,7 @@ def scan_nearby_excels() -> List[Path]:
 
 def interactive_menu() -> dict:
     """
-    交互式向导，方便非命令行用户直接双击运行
+    交互式向导，支持使用 ↑ / ↓ 方向键上下移动选择，方便非命令行用户直接双击运行
     """
     print("\n" + "=" * 65)
     print("      欢迎使用 京东商品上下架/风控自动化巡检系统 (DrissionPage)")
@@ -61,44 +62,46 @@ def interactive_menu() -> dict:
     selected_excel = None
 
     if excels:
-        print("\n扫描到以下 Excel 表格文件：")
-        for i, f in enumerate(excels, start=1):
-            size_mb = f.stat().st_size / (1024 * 1024)
-            print(f"  [{i}] {f.name} ({size_mb:.1f} MB)  ({f.parent})")
-        print("  [S] 快速生成一份测试样例表格 (sample_jd_goods.xlsx)")
-        print("  [0] 手动输入其他完整文件路径")
+        excel_choices = [
+            f"📄 {f.name} ({f.stat().st_size / (1024 * 1024):.1f} MB)"
+            for f in excels
+        ]
+        excel_choices.append("➕ 手动输入其他 Excel 文件的完整绝对路径")
+        excel_choices.append("🧪 快速生成一份测试样例表格 (sample_jd_goods.xlsx)")
 
-        while True:
-            choice = input("\n请选择要处理的表格序号或选项 [默认 1]: ").strip()
-            if not choice:
-                selected_excel = str(excels[0])
-                break
-            elif choice.upper() == "S":
-                sample_file = create_sample_excel()
-                selected_excel = sample_file
-                break
-            elif choice == "0":
+        idx = select_menu(
+            "【步骤 1/4】扫描到以下表格，请选择要巡检的 Excel 文件：",
+            excel_choices,
+            default_idx=0
+        )
+        if idx < len(excels):
+            selected_excel = str(excels[idx])
+        elif idx == len(excels):
+            while True:
                 path_input = input("请输入 Excel 文件的完整绝对路径: ").strip().strip('"').strip("'")
                 if Path(path_input).exists():
                     selected_excel = path_input
                     break
                 else:
                     print("[!] 该文件不存在，请重新输入！")
-            elif choice.isdigit() and 1 <= int(choice) <= len(excels):
-                selected_excel = str(excels[int(choice) - 1])
-                break
-            else:
-                print("[!] 输入无效，请重新选择！")
-    else:
-        print("\n未在当前目录或桌面上自动发现 .xlsx 表格。")
-        print("  [S] 自动生成一份测试样例表格并开始测试")
-        print("  [0] 手工输入现有表格路径")
-        choice = input("请选择 [S/0，默认 S]: ").strip()
-        if choice == "0":
-            path_input = input("请输入 Excel 文件的完整绝对路径: ").strip().strip('"').strip("'")
-            selected_excel = path_input
         else:
             selected_excel = create_sample_excel()
+    else:
+        empty_choices = [
+            "🧪 自动生成一份测试样例表格 (sample_jd_goods.xlsx) 并开始测试",
+            "➕ 手动输入现有表格完整绝对路径"
+        ]
+        idx = select_menu("未在当前目录或桌面上自动发现表格，请选择：", empty_choices)
+        if idx == 0:
+            selected_excel = create_sample_excel()
+        else:
+            while True:
+                path_input = input("请输入 Excel 文件的完整绝对路径: ").strip().strip('"').strip("'")
+                if Path(path_input).exists():
+                    selected_excel = path_input
+                    break
+                else:
+                    print("[!] 该文件不存在，请重新输入！")
 
     # 探测该表格内部包含的工作表（分表）
     target_sheets = "ALL"
@@ -106,46 +109,79 @@ def interactive_menu() -> dict:
     all_sheet_names = [info["name"] for info in sheet_infos]
 
     if len(sheet_infos) > 1:
-        print("\n" + "-" * 65)
-        print(f"检测到该表格包含 {len(sheet_infos)} 个工作表（分表）：")
-        for idx, info in enumerate(sheet_infos, start=1):
-            tag = "[含商品链接]" if info["has_goods"] else "[未发现链接]"
-            print(f"  [{idx}] {info['name']} {tag}")
-        print("-" * 65)
-        print("【分表巡检范围与起始设置】：")
-        print("  • 直接按回车 或 输入 A ：巡检全部分表（从第 1 张开始跑完全部）")
-        print("  • 从指定分表开始       ：输入 [序号-]，如输入 '3-' 表示从第 3 张分表开始往后全部巡检！")
-        print("  • 仅巡检单张分表       ：输入单个序号，如输入 '3' 表示只巡检第 3 张分表")
-        print("  • 巡检指定范围         ：输入 [起始-结束]，如输入 '2-4' 表示巡检第 2 到第 4 张分表")
-        print("  • 巡检多张指定分表     ：输入如 '1,3,5' 仅巡检这几张分表")
-        print("-" * 65)
+        sheet_mode_options = [
+            f"🌟 巡检全部工作表（推荐：从第 1 张开始跑完全部 {len(sheet_infos)} 个分表）",
+            "🚀 从指定分表开始（依次巡检选中的分表及后续所有分表至最后）",
+            "🎯 仅巡检单张分表（只处理选中的单张分表）",
+            "☑️  自定义自由勾选（使用方向键移动，按空格键自由勾选/反选任意分表）"
+        ]
 
-        while True:
-            s_choice = input("请选择巡检分表范围或起始位置 [默认 A 全部]: ").strip()
-            try:
-                selected_list = parse_sheet_selection(s_choice, all_sheet_names)
-                if not selected_list:
-                    print("[!] 所选范围内未找到有效分表，请重新选择！")
-                    continue
-                target_sheets = selected_list
-                if len(target_sheets) == len(all_sheet_names):
-                    print(f"[√] 已选择：巡检全部分表 (共 {len(target_sheets)} 个)")
-                else:
-                    preview = " -> ".join([f"【{s}】" for s in target_sheets[:4]])
-                    if len(target_sheets) > 4:
-                        preview += f" ... 等共 {len(target_sheets)} 个分表"
-                    print(f"[√] 已设定巡检分表：{preview}")
-                break
-            except Exception as e:
-                print(f"[!] 输入有误: {e}，请重新输入！")
+        mode_idx = select_menu(
+            f"【步骤 2/4】检测到表格包含 {len(sheet_infos)} 个工作表（分表），请选择巡检方式：",
+            sheet_mode_options,
+            default_idx=0
+        )
 
-    # 询问是否无头运行
-    hl_input = input("\n是否使用无头静默模式（后台运行不弹窗）？[y/N，默认 N (弹出窗口更安全)]: ").strip().lower()
-    headless = True if hl_input in ("y", "yes") else False
+        if mode_idx == 0:
+            target_sheets = "ALL"
+        elif mode_idx == 1:
+            # 从指定分表开始
+            sheet_items = [
+                f"[{i}] {info['name']} {'[含商品链接]' if info['has_goods'] else '[未发现链接]'}"
+                for i, info in enumerate(sheet_infos, start=1)
+            ]
+            s_idx = select_menu(
+                "请使用 ↑ / ↓ 键选择从哪一张分表开始（将从该分表依次巡检后续所有分表）：",
+                sheet_items,
+                default_idx=0
+            )
+            target_sheets = all_sheet_names[s_idx:]
+            preview = " -> ".join([f"【{s}】" for s in target_sheets[:4]])
+            if len(target_sheets) > 4:
+                preview += f" ... 等共 {len(target_sheets)} 个分表"
+            print(f"[√] 已设定从第 {s_idx + 1} 张分表开始巡检：{preview}\n")
+        elif mode_idx == 2:
+            # 仅单张分表
+            sheet_items = [
+                f"[{i}] {info['name']} {'[含商品链接]' if info['has_goods'] else '[未发现链接]'}"
+                for i, info in enumerate(sheet_infos, start=1)
+            ]
+            s_idx = select_menu(
+                "请使用 ↑ / ↓ 键选择要单独巡检的工作表：",
+                sheet_items,
+                default_idx=0
+            )
+            target_sheets = [all_sheet_names[s_idx]]
+            print(f"[√] 已设定仅巡检分表：【{all_sheet_names[s_idx]}】\n")
+        elif mode_idx == 3:
+            # 自定义勾选
+            cb_items = [
+                f"{info['name']} {'[含商品链接]' if info['has_goods'] else '[未发现链接]'}"
+                for info in sheet_infos
+            ]
+            default_chk = [i for i, info in enumerate(sheet_infos) if info["has_goods"]]
+            chosen_indices = select_checkbox_menu(
+                "请勾选需要巡检的分表：",
+                cb_items,
+                default_checked=default_chk
+            )
+            target_sheets = [all_sheet_names[i] for i in chosen_indices]
 
-    # 询问是否断点续传
-    skip_input = input("是否启用断点续传（自动跳过已有检测结果的行）？[Y/n，默认 Y]: ").strip().lower()
-    skip_completed = False if skip_input in ("n", "no") else True
+    # 步骤 3/4：浏览器运行模式
+    browser_options = [
+        "🖥️  有界面模式（推荐：弹出浏览器窗口，直观可见，安全度最高）",
+        "👻 无头后台模式（静默后台运行，不弹窗）"
+    ]
+    b_idx = select_menu("【步骤 3/4】请选择浏览器运行模式：", browser_options, default_idx=0)
+    headless = (b_idx == 1)
+
+    # 步骤 4/4：断点续传
+    resume_options = [
+        "⚡ 启用断点续传（自动跳过已有检测结果的行，省时高效）",
+        "🔄 重新全量检测（忽略历史结果，对全表重新巡检）"
+    ]
+    r_idx = select_menu("【步骤 4/4】请选择断点续传设置：", resume_options, default_idx=0)
+    skip_completed = (r_idx == 0)
 
     return {
         "excel_path": selected_excel,
