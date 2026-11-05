@@ -192,6 +192,11 @@ class JDStatusInspector:
         finally:
             bm.stop()
             excel.close()
+            # 无论正常结束还是手动中断退出，自动将巡检结果写回原表（零损保护图片）
+            try:
+                excel.sync_to_original()
+            except Exception as e:
+                print(f"[!] 同步写回原表提示: {e}")
 
         # 打印巡检报告总结
         self._print_summary()

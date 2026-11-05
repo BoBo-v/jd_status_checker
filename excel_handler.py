@@ -432,6 +432,17 @@ class SafeExportExcelHandler:
             except Exception:
                 pass
 
+    def sync_to_original(self):
+        """
+        在任务完成、用户中断或退出时，通过零损流式引擎将巡检结果自动写回原表！
+        100% 保护原表商品主图不丢失、自动防 WPS 独占崩溃。
+        """
+        try:
+            from sync_engine import sync_results_to_original
+            sync_results_to_original(str(self.result_path), str(self.original_path))
+        except Exception as e:
+            print(f"[!] 自动写回原表时提示: {e}")
+
 
 # 默认别名导出
 ExcelHandler = SafeExportExcelHandler
