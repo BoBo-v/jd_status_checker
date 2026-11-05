@@ -9,6 +9,7 @@
 """
 import os
 import re
+import html
 import shutil
 import zipfile
 import xml.etree.ElementTree as ET
@@ -135,7 +136,8 @@ def sync_results_to_original(source_report_path: str, target_original_path: str)
                 rid = s.attrib.get("{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id")
                 tgt = rel_map.get(rid)
                 if tgt:
-                    full_tgt = tgt if tgt.startswith("xl/") else f"xl/{tgt}"
+                    clean_tgt = tgt.lstrip("/")
+                    full_tgt = clean_tgt if clean_tgt.startswith("xl/") else f"xl/{clean_tgt}"
                     sheet_map[s_name] = full_tgt
 
             # 3. 准备更新映射
@@ -152,48 +154,63 @@ def sync_results_to_original(source_report_path: str, target_original_path: str)
                         raw_xml = zin.read(item.filename).decode('utf-8')
                         sheet_updates = updates_by_xml[item.filename]
 
-                        # 探测第 1 行表头
+                        # 探测第 1 行表头：仅匹配或新增【是否已下架（1下架）】单列
                         m_row1 = re.search(r'<row r="1"[^>]*>.*?</row>', raw_xml, re.DOTALL)
                         status_col = None
-                        remark_col = None
-                        time_col = None
                         max_col_idx = 1
 
                         if m_row1:
                             r1_text = m_row1.group(0)
-                            cells = re.findall(r'<c r="([A-Z]+)1"(?:\s+[^>]*)?(?:>(.*?)</c>|/>)', r1_text, re.DOTALL)
-                            for col_let, content in cells:
+                            for m_c in re.finditer(r'<c\s+([^>]*)(?:>(.*?)</c>|/>)', r1_text, re.DOTALL):
+                                attrs = m_c.group(1)
+                                content = m_c.group(2) or ""
+                                m_r = re.search(r'r="([A-Z]+)1"', attrs)
+                                if not m_r:
+                                    continue
+                                col_let = m_r.group(1)
                                 c_idx = openpyxl.utils.column_index_from_string(col_let)
                                 if c_idx > max_col_idx:
                                     max_col_idx = c_idx
                                 val = ""
-                                if content:
-                                    m_t = re.search(r'<t[^>]*>(.*?)</t>', content)
+                                if 't="s"' in attrs:
                                     m_v = re.search(r'<v>(.*?)</v>', content)
-                                    if 't="s"' in content and m_v:
+                                    if m_v:
                                         s_idx = int(m_v.group(1))
                                         if s_idx < len(shared_strings):
                                             val = shared_strings[s_idx]
-                                    elif m_t:
-                                        val = m_t.group(1)
+                                else:
+                                    m_t = re.search(r'<t[^>]*>(.*?)</t>', content)
+                                    if m_t:
+                                        val = html.unescape(m_t.group(1))
+                                    else:
+                                        m_v = re.search(r'<v>(.*?)</v>', content)
+                                        if m_v:
+                                            val = m_v.group(1)
                                 val_lower = val.lower()
                                 if not status_col and any(kw.lower() in val_lower for kw in EXCEL_COL_KEYWORDS["status"]):
                                     status_col = col_let
-                                if not remark_col and any(kw.lower() in val_lower for kw in EXCEL_COL_KEYWORDS["remark"]):
-                                    remark_col = col_let
-                                if not time_col and any(kw.lower() in val_lower for kw in EXCEL_COL_KEYWORDS["time"]):
-                                    time_col = col_let
 
-                        # 若原表不存在对应列，自动在最右侧追加新列
+                        # 若原表不存在该列，自动在最右侧追加【是否已下架（1下架）】
                         if not status_col:
                             max_col_idx += 1
                             status_col = openpyxl.utils.get_column_letter(max_col_idx)
-                        if not remark_col:
-                            max_col_idx += 1
-                            remark_col = openpyxl.utils.get_column_letter(max_col_idx)
-                        if not time_col:
-                            max_col_idx += 1
-                            time_col = openpyxl.utils.get_column_letter(max_col_idx)
+
+                        def patch_cell_in_row(r_str: str, col_let: str, r_num: int, cell_xml: str) -> str:
+                            # 1. 若当前行已有该坐标单元格（包含自闭合空标签与普通标签），直接原地替换
+                            cell_pattern = rf'<c\s+r="{col_let}{r_num}"(?:\s+[^>]*)?(?:>.*?</c>|/>)'
+                            if re.search(cell_pattern, r_str, flags=re.DOTALL):
+                                return re.sub(cell_pattern, cell_xml, r_str, count=1, flags=re.DOTALL)
+
+                            # 2. 若不存在，在列序升序位置插入（符合 OOXML 严格规范）
+                            target_c_idx = openpyxl.utils.column_index_from_string(col_let)
+                            for m in re.finditer(r'<c\s+r="([A-Z]+)\d+"', r_str):
+                                existing_col = m.group(1)
+                                if openpyxl.utils.column_index_from_string(existing_col) > target_c_idx:
+                                    pos = m.start()
+                                    return r_str[:pos] + cell_xml + r_str[pos:]
+
+                            # 3. 若目标列比当前行所有单元格列号都大，追加在 </row> 之前
+                            return re.sub(r'</row>$', f'{cell_xml}</row>', r_str)
 
                         def row_replacer(match):
                             r_str = match.group(0)
@@ -202,33 +219,22 @@ def sync_results_to_original(source_report_path: str, target_original_path: str)
                                 return r_str
                             r_num = int(m_r.group(1))
 
-                            # 表头行：注入表头
+                            # 表头行：注入表头（仅保持极简单列：是否已下架（1下架））
                             if r_num == 1:
-                                h_add = ""
                                 if f'r="{status_col}1"' not in r_str:
-                                    h_add += f'<c r="{status_col}1" t="inlineStr"><is><t>是否已下架（1下架）</t></is></c>'
-                                if f'r="{remark_col}1"' not in r_str:
-                                    h_add += f'<c r="{remark_col}1" t="inlineStr"><is><t>检测备注/异常状态</t></is></c>'
-                                if f'r="{time_col}1"' not in r_str:
-                                    h_add += f'<c r="{time_col}1" t="inlineStr"><is><t>检测时间</t></is></c>'
-                                if h_add:
-                                    return re.sub(r'</row>$', f'{h_add}</row>', r_str)
+                                    h_cell = f'<c r="{status_col}1" t="inlineStr"><is><t>是否已下架（1下架）</t></is></c>'
+                                    return patch_cell_in_row(r_str, status_col, 1, h_cell)
                                 return r_str
 
-                            # 数据行：注入状态与备注
+                            # 数据行：仅写入 0 或 1 状态值（原表不追加备注和时间，保持原表极致清爽）
                             if r_num in sheet_updates:
                                 st, rm, tm = sheet_updates[r_num]
-                                c_st = f'<c r="{status_col}{r_num}"><v>{st}</v></c>'
-                                c_rm = f'<c r="{remark_col}{r_num}" t="inlineStr"><is><t>{rm}</t></is></c>'
-                                c_tm = f'<c r="{time_col}{r_num}" t="inlineStr"><is><t>{tm}</t></is></c>'
+                                if str(st).strip() in ("0", "1"):
+                                    c_st = f'<c r="{status_col}{r_num}"><v>{st}</v></c>'
+                                else:
+                                    c_st = f'<c r="{status_col}{r_num}" t="inlineStr"><is><t>{st}</t></is></c>'
 
-                                for col_let, cell_xml in [(status_col, c_st), (remark_col, c_rm), (time_col, c_tm)]:
-                                    if f'r="{col_let}{r_num}"' in r_str:
-                                        r_str = re.sub(rf'<c r="{col_let}{r_num}"[^>]*>.*?</c>', cell_xml, r_str)
-                                        r_str = re.sub(rf'<c r="{col_let}{r_num}"[^>]*/>', cell_xml, r_str)
-                                    else:
-                                        r_str = re.sub(r'</row>$', f'{cell_xml}</row>', r_str)
-                                return r_str
+                                return patch_cell_in_row(r_str, status_col, r_num, c_st)
 
                             return r_str
 

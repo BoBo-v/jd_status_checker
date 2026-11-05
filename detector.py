@@ -11,8 +11,12 @@ from DrissionPage import ChromiumPage
 from config import (
     PAGE_WAIT_AFTER_LOAD,
     OUT_OF_STOCK_AS_DELIST,
+    ENABLE_SCREENSHOT,
     SCREENSHOT_DIR,
+    SCREENSHOT_MAX_DAYS,
+    SCREENSHOT_MAX_COUNT,
 )
+from logger import logger
 
 
 class DetectionResult(NamedTuple):
@@ -25,18 +29,57 @@ class DetectionResult(NamedTuple):
     is_login: bool = False   # 是否触发了提示登录/强制登录跳转
 
 
+def clean_expired_screenshots():
+    """
+    自动清理过期与超出数量上限的历史截图（仅在开启截图时执行）
+    """
+    if not SCREENSHOT_DIR.exists():
+        return
+    try:
+        now = time.time()
+        max_age_seconds = SCREENSHOT_MAX_DAYS * 86400
+        png_files = sorted(SCREENSHOT_DIR.glob("*.png"), key=lambda p: p.stat().st_mtime)
+
+        # 1. 清理超过 N 天的文件
+        for p in png_files:
+            if now - p.stat().st_mtime > max_age_seconds:
+                try:
+                    p.unlink()
+                except Exception:
+                    pass
+
+        # 2. 清理超出最大数量限制的早期文件
+        remaining_files = sorted(SCREENSHOT_DIR.glob("*.png"), key=lambda p: p.stat().st_mtime)
+        if len(remaining_files) > SCREENSHOT_MAX_COUNT:
+            to_remove = remaining_files[:-SCREENSHOT_MAX_COUNT]
+            for p in to_remove:
+                try:
+                    p.unlink()
+                except Exception:
+                    pass
+    except Exception as e:
+        logger.debug(f"清理过期截图时出错: {e}")
+
+
 def take_error_screenshot(page: ChromiumPage, sku_id: str) -> str:
     """
-    对异常页面进行屏幕截图并保存
+    对异常页面进行屏幕截图并保存（受 ENABLE_SCREENSHOT 控制）
+    默认不开启截图，改用日志记录，彻底杜绝磁盘膨胀！
     """
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    screenshot_filename = f"{sku_id}_{timestamp}.png"
-    filepath = SCREENSHOT_DIR / screenshot_filename
+    if not ENABLE_SCREENSHOT:
+        return ""
+
     try:
+        SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
+        clean_expired_screenshots()
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        screenshot_filename = f"{sku_id}_{timestamp}.png"
+        filepath = SCREENSHOT_DIR / screenshot_filename
         page.get_screenshot(path=str(SCREENSHOT_DIR), name=screenshot_filename, full_page=False)
         return str(filepath)
     except Exception as e:
-        print(f"[-] 截图保存失败 [{sku_id}]: {e}")
+        logger.warning(f"[-] 截图保存失败 [{sku_id}]: {e}")
         return ""
 
 

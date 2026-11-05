@@ -241,6 +241,8 @@ class SafeExportExcelHandler:
 
             url_idx = detected["url"] - 1
             name_idx = detected.get("name", -1) - 1
+            status_idx = detected.get("status", -1) - 1
+            remark_idx = detected.get("remark", -1) - 1
 
             # 流式提取该分表的所有数据
             row_idx = 0
@@ -255,6 +257,8 @@ class SafeExportExcelHandler:
                     continue
 
                 name_val = str(r_vals[name_idx] or "").strip() if 0 <= name_idx < len(r_vals) else ""
+                orig_status = r_vals[status_idx] if 0 <= status_idx < len(r_vals) else None
+                orig_remark = str(r_vals[remark_idx] or "").strip() if 0 <= remark_idx < len(r_vals) else ""
 
                 self.rows_data.append({
                     "sheet_name": s_name,
@@ -262,6 +266,8 @@ class SafeExportExcelHandler:
                     "raw_url": raw_url,
                     "name": name_val,
                     "sku": extract_sku_id(raw_url) or "",
+                    "orig_status": orig_status,
+                    "orig_remark": orig_remark,
                 })
                 sheet_added_count += 1
 
@@ -289,6 +295,16 @@ class SafeExportExcelHandler:
             "检测时间",
         ]
 
+        # 1. 优先载入原表自身【是否已下架】已有状态，实现原表级智能断点跳过
+        orig_completed_count = 0
+        for item in self.rows_data:
+            st = item.get("orig_status")
+            if self.is_completed(st):
+                k = (item["sheet_name"], item["row_idx"])
+                self.existing_results[k] = (st, item.get("orig_remark") or "原表已有状态")
+                orig_completed_count += 1
+
+        res_completed_count = 0
         if self.result_path.exists():
             print(f"[*] 检测到历史巡检结果文件: {self.result_path.name}")
             try:
@@ -305,11 +321,17 @@ class SafeExportExcelHandler:
                     if s_name and row_num is not None:
                         try:
                             k = (s_name, int(row_num))
+                            if self.is_completed(status_val):
+                                res_completed_count += 1
                             self.existing_results[k] = (status_val, str(remark_val or ""))
                             self.result_row_map[k] = r
                         except ValueError:
                             pass
-                print(f"[+] 历史结果读取完成，已包含 {len(self.existing_results)} 条已测记录（将自动跳过已完成项）\n")
+                total_completed = len([k for k, v in self.existing_results.items() if self.is_completed(v[0])])
+                print(f"[+] 历史状态断点扫描完成：")
+                print(f"    - 原表格已标记状态: {orig_completed_count} 条")
+                print(f"    - 巡检结果表已检测: {res_completed_count} 条")
+                print(f"    - 双重合并后已完成: {total_completed} 条 (将自动跳过这些行)\n")
                 return
             except Exception as e:
                 print(f"[!] 加载历史结果文件失败: {e}，将新建结果文件")
@@ -337,6 +359,10 @@ class SafeExportExcelHandler:
             self.result_ws.column_dimensions[openpyxl.utils.get_column_letter(col_idx)].width = width
 
         self.result_wb.save(self.result_path)
+
+        if orig_completed_count > 0:
+            print(f"[+] 历史状态断点扫描完成：")
+            print(f"    - 原表格已标记状态: {orig_completed_count} 条 (将自动跳过这些行)\n")
 
     def is_completed(self, status_val: any) -> bool:
         if status_val is None:

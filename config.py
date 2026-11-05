@@ -7,12 +7,19 @@ import os
 import sys
 from pathlib import Path
 
-# 项目根目录
-BASE_DIR = Path(__file__).resolve().parent
+# 项目根目录（兼容源码运行与 PyInstaller 打包环境）
+if getattr(sys, "frozen", False):
+    BASE_DIR = Path(sys.executable).resolve().parent
+else:
+    BASE_DIR = Path(__file__).resolve().parent
 
-# 截图保存目录（未知状态或异常时截图）
+# 是否开启异常截图（默认 False 关闭：全面使用文本日志记录，彻底避免占用磁盘）
+ENABLE_SCREENSHOT = False
+
+# 截图保存目录与生命周期管理（仅在手动开启截图时生效，防膨胀双保险）
 SCREENSHOT_DIR = BASE_DIR / "error_screenshots"
-SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
+SCREENSHOT_MAX_DAYS = 3       # 自动清理超过 3 天的历史截图
+SCREENSHOT_MAX_COUNT = 50     # 最多保留最近 50 张截图
 
 # 浏览器持久化用户数据目录（保留登录态 Cookie、缓存）
 BROWSER_USER_DATA_DIR = BASE_DIR / "browser_data"

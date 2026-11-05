@@ -3,7 +3,9 @@
 一键打包脚本 (Windows 绿色免安装版)
 使用 Python 原生调用 PyInstaller，彻底避免 Windows .bat 批处理编码导致的语法解析崩溃
 """
+import os
 import sys
+import stat
 import shutil
 from pathlib import Path
 import PyInstaller.__main__
@@ -12,6 +14,13 @@ if sys.platform == "win32":
     try:
         sys.stdout.reconfigure(encoding="utf-8")
         sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
+def remove_readonly(func, path, excinfo):
+    try:
+        os.chmod(path, stat.S_IWRITE)
+        func(path)
     except Exception:
         pass
 
@@ -28,9 +37,9 @@ def build():
     # 清理旧构建缓存
     print("[*] 正在清理旧的构建缓存...")
     if build_dir.exists():
-        shutil.rmtree(build_dir, ignore_errors=True)
+        shutil.rmtree(build_dir, onerror=remove_readonly)
     if dist_dir.exists():
-        shutil.rmtree(dist_dir, ignore_errors=True)
+        shutil.rmtree(dist_dir, onerror=remove_readonly)
 
     # 构造打包参数
     main_script = base_dir / "main.py"
@@ -43,6 +52,7 @@ def build():
         "--collect-all=DrissionPage",
         "--copy-metadata=DrissionPage",
         "--hidden-import=openpyxl",
+        "--hidden-import=html",
         f"--distpath={dist_dir}",
         f"--workpath={build_dir}",
         f"--specpath={base_dir}",

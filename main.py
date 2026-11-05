@@ -209,6 +209,7 @@ def main():
     parser.add_argument("--login-retries", type=int, default=MAX_LOGIN_RESTART_RETRIES, help="遇到登录拦截时自动重启浏览器的最大重试次数")
     parser.add_argument("--rerun-all", action="store_true", help="强制重新检测全部数据，不跳过已完成项")
     parser.add_argument("--recheck-errors", action="store_true", help="仅重跑状态为待查或异常的记录")
+    parser.add_argument("--enable-screenshot", action="store_true", help="启用异常页面截图（默认关闭，采用纯文本日志记录以节省磁盘空间）")
     parser.add_argument("--delay-min", type=float, default=DELAY_MIN, help="最小停顿延时（秒）")
     parser.add_argument("--delay-max", type=float, default=DELAY_MAX, help="最大停顿延时（秒）")
     parser.add_argument("--save-interval", type=int, default=SAVE_INTERVAL, help="回写保存间隔（行数）")
@@ -219,6 +220,10 @@ def main():
     if args.generate_sample:
         create_sample_excel()
         return
+
+    if args.enable_screenshot:
+        import config
+        config.ENABLE_SCREENSHOT = True
 
     bypass_proxy = not args.no_bypass_proxy
     auto_restart = not args.no_auto_restart

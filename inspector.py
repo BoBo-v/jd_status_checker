@@ -22,6 +22,7 @@ from url_parser import to_mobile_h5_url
 from browser_manager import BrowserManager
 from detector import detect_product_status, DetectionResult
 from excel_handler import ExcelHandler
+from logger import logger, get_log_file_path
 
 
 class JDStatusInspector:
@@ -145,9 +146,15 @@ class JDStatusInspector:
                     # 格式化输出状态
                     status_text = "正常在售" if res.status == 0 else ("已下架" if res.status == 1 else str(res.status))
                     print(f"    [√] 检测结果: 【{status_text}】(值={res.status}) | 备注: {res.remark}")
+                    logger.info(f"【{sheet_name}:行{row_idx:3d}】SKU:{sku_id} -> 【{status_text}】(值={res.status}) | 备注: {res.remark}")
 
                     if res.is_risk:
-                        print(f"    [!] 触发风控或登录拦截: {res.remark}，截图已存: {res.screenshot_path}")
+                        log_msg = f"触发风控或登录拦截: {res.remark}"
+                        if res.screenshot_path:
+                            print(f"    [!] {log_msg} (截图: {res.screenshot_path})")
+                        else:
+                            print(f"    [!] {log_msg}")
+                        logger.warning(f"【{sheet_name}:行{row_idx:3d}】SKU:{sku_id} {log_msg} | URL: {mobile_url}")
                         self.stats["risk_or_manual"] += 1
                     elif res.status == 0:
                         self.stats["in_stock"] += 1
@@ -214,4 +221,6 @@ class JDStatusInspector:
         print(f"  [1] 已下架:        {self.stats['delisted']:4d}")
         print(f"  [?] 风控/待查:     {self.stats['risk_or_manual']:4d}")
         print(f"  [!] 无效链接:      {self.stats['invalid_url']:4d}")
+        print(f"  -------------------------------------------")
+        print(f"  详细日志文件:      {get_log_file_path()}")
         print("=" * 65 + "\n")
