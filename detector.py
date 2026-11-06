@@ -4,10 +4,12 @@
 针对京东移动端 H5 页面的特征与 DOM 进行多分支状态嗅探
 """
 import time
+import random
 from datetime import datetime
 from typing import NamedTuple, Optional
 from DrissionPage import ChromiumPage
 
+import config
 from config import (
     PAGE_WAIT_AFTER_LOAD,
     OUT_OF_STOCK_AS_DELIST,
@@ -83,6 +85,34 @@ def take_error_screenshot(page: ChromiumPage, sku_id: str) -> str:
         return ""
 
 
+def simulate_human_micro_scroll(page: ChromiumPage, probability: Optional[float] = None):
+    """
+    轻量拟人微动滚动：
+    - 随机概率触发（默认约 70%）：模拟真实人类有的看首屏直接离开，有的轻滑浏览；
+    - 随机位移：滑动 160 ~ 380 像素，使用 smooth 平滑插值动画；
+    - 拟人回弹：约 15% 几率产生 40 ~ 80 像素轻度回滚（模仿视线复位）。
+    """
+    prob = probability if probability is not None else config.MICRO_SCROLL_PROBABILITY
+    if not config.ENABLE_MICRO_SCROLL or random.random() > prob:
+        return
+
+    try:
+        # 1. 随机平滑下滑
+        scroll_px = random.randint(160, 380)
+        page.run_js(f"window.scrollBy({{top: {scroll_px}, behavior: 'smooth'}});")
+
+        # 2. 拟人小细节：15% 几率轻微回弹看一眼首屏
+        if random.random() < 0.15:
+            time.sleep(round(random.uniform(0.15, 0.3), 2))
+            scroll_back = random.randint(40, 80)
+            page.run_js(f"window.scrollBy({{top: -{scroll_back}, behavior: 'smooth'}});")
+    except Exception:
+        try:
+            page.scroll.down(200)
+        except Exception:
+            pass
+
+
 def detect_product_status(
     page: ChromiumPage,
     sku_id: str,
@@ -95,7 +125,15 @@ def detect_product_status(
     try:
         # 1. 打开商品移动端页面
         page.get(mobile_url)
-        time.sleep(wait_time)
+
+        # 拟人交互：充分利用既有的 wait_time，全流程随机时间拟人化
+        initial_wait = round(random.uniform(0.35, 0.65), 2)
+        time.sleep(initial_wait)
+
+        simulate_human_micro_scroll(page)
+
+        remaining_wait = max(0.2, wait_time - initial_wait)
+        time.sleep(remaining_wait)
 
         current_url = page.url or ""
 

@@ -210,6 +210,7 @@ def main():
     parser.add_argument("--rerun-all", action="store_true", help="强制重新检测全部数据，不跳过已完成项")
     parser.add_argument("--recheck-errors", action="store_true", help="仅重跑状态为待查或异常的记录")
     parser.add_argument("--enable-screenshot", action="store_true", help="启用异常页面截图（默认关闭，采用纯文本日志记录以节省磁盘空间）")
+    parser.add_argument("--no-micro-scroll", action="store_true", help="禁用拟人微动滑动（默认开启，隔几个商品随机微滑以防止风控滑块）")
     parser.add_argument("--delay-min", type=float, default=DELAY_MIN, help="最小停顿延时（秒）")
     parser.add_argument("--delay-max", type=float, default=DELAY_MAX, help="最大停顿延时（秒）")
     parser.add_argument("--save-interval", type=int, default=SAVE_INTERVAL, help="回写保存间隔（行数）")
@@ -224,6 +225,10 @@ def main():
     if args.enable_screenshot:
         import config
         config.ENABLE_SCREENSHOT = True
+
+    if args.no_micro_scroll:
+        import config
+        config.ENABLE_MICRO_SCROLL = False
 
     bypass_proxy = not args.no_bypass_proxy
     auto_restart = not args.no_auto_restart
