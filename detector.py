@@ -267,7 +267,17 @@ def detect_product_status(
                 remark="已停售",
             )
 
-        out_of_stock_keywords = ["所选地区暂时无货", "暂无报价", "暂时无货", "该商品暂时无货"]
+        out_of_stock_keywords = [
+            "此商品在所选区域暂无存货",
+            "所选区域暂无存货",
+            "所选地区暂无存货",
+            "所选地区暂时无货",
+            "该商品暂时无货",
+            "暂时无货",
+            "暂无存货",
+            "暂无报价",
+            "无存货",
+        ]
         if any(kw in page_text or kw in html_content for kw in out_of_stock_keywords):
             val = 1 if OUT_OF_STOCK_AS_DELIST else 0
             return DetectionResult(

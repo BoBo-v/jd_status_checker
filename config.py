@@ -13,6 +13,8 @@ if getattr(sys, "frozen", False):
 else:
     BASE_DIR = Path(__file__).resolve().parent
 
+
+
 # 是否开启异常截图（默认 False 关闭：全面使用文本日志记录，彻底避免占用磁盘）
 ENABLE_SCREENSHOT = False
 
@@ -35,7 +37,8 @@ BROWSER_USER_DATA_DIR.mkdir(parents=True, exist_ok=True)
 #      Windows: r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 #      便携版/绿色版: r"D:\PortableChrome\chrome.exe"
 #      Mac: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-CUSTOM_BROWSER_PATH = None
+#CUSTOM_BROWSER_PATH = None
+CUSTOM_BROWSER_PATH = r"C:\Program Files\Qoom Chrome\chrome.exe"
 
 # 默认浏览器可执行文件备选路径 (兼容 Windows 与 Mac)
 BROWSER_CANDIDATE_PATHS = [
