@@ -204,6 +204,7 @@ def main():
     parser.add_argument("--sheet", "-s", type=str, default="ALL", help="指定分表名称、序号范围（如 '3-' 从第3张表开始, '2-4', '1,3', 'ALL'）")
     parser.add_argument("--start-sheet", type=str, default=None, help="从指定分表开始巡检（可输入分表序号如 3 或分表名称，将从该分表一直跑至最后）")
     parser.add_argument("--headless", action="store_true", help="启用无头静默模式（默认显示浏览器窗口）")
+    parser.add_argument("--browser", "-b", type=str, default=None, help="指定浏览器路径或别名（chrome/edge，默认优先读取 config.py 或自动检测）")
     parser.add_argument("--no-bypass-proxy", action="store_true", help="不绕过代理（使用系统默认代理网络）")
     parser.add_argument("--no-auto-restart", action="store_true", help="禁用遇登录拦截时自动关闭并重启浏览器")
     parser.add_argument("--login-retries", type=int, default=MAX_LOGIN_RESTART_RETRIES, help="遇到登录拦截时自动重启浏览器的最大重试次数")
@@ -263,6 +264,7 @@ def main():
         recheck_errors_only=recheck_errors,
         delay_range=(args.delay_min, args.delay_max),
         save_interval=args.save_interval,
+        custom_browser_path=args.browser,
     )
 
     inspector.run()

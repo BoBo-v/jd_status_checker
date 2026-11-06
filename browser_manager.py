@@ -11,6 +11,7 @@ from typing import Optional
 from DrissionPage import ChromiumPage, ChromiumOptions
 
 from config import (
+    CUSTOM_BROWSER_PATH,
     BROWSER_CANDIDATE_PATHS,
     BROWSER_USER_DATA_DIR,
     VIEWPORT_WIDTH,
@@ -23,11 +24,39 @@ from config import (
 
 def find_browser_executable(custom_path: Optional[str] = None) -> Optional[str]:
     """
-    自动查找系统中的 Chrome 或 Edge 浏览器路径
+    智能查找浏览器可执行文件：
+    1. 优先使用命令行或参数传入的 custom_path；
+    2. 其次使用 config.CUSTOM_BROWSER_PATH 中的自定义配置；
+    3. 支持别名 "chrome" / "edge" 智能匹配系统对应浏览器；
+    4. 支持任意真实存在的 Chromium 浏览器 .exe 绝对路径；
+    5. 默认 (None) 自动寻找系统中已安装的 Chrome 或 Edge。
     """
-    if custom_path and os.path.exists(custom_path):
-        return custom_path
+    target = custom_path or CUSTOM_BROWSER_PATH
+    if target:
+        target_str = str(target).strip()
+        target_lower = target_str.lower()
 
+        # 别名快捷匹配：chrome
+        if target_lower in ("chrome", "google", "google chrome", "google-chrome"):
+            for p in BROWSER_CANDIDATE_PATHS:
+                if "chrome" in p.lower() and os.path.exists(p):
+                    return p
+            print(f"[!] 提示：已配置优先使用 Chrome，但未在系统默认路径找到，将尝试自动匹配备选浏览器。")
+
+        # 别名快捷匹配：edge
+        elif target_lower in ("edge", "msedge", "microsoft edge", "microsoft-edge"):
+            for p in BROWSER_CANDIDATE_PATHS:
+                if ("edge" in p.lower() or "msedge" in p.lower()) and os.path.exists(p):
+                    return p
+            print(f"[!] 提示：已配置优先使用 Edge，但未在系统默认路径找到，将尝试自动匹配备选浏览器。")
+
+        # 路径匹配：直接给定了真实存在的文件路径
+        elif os.path.exists(target_str):
+            return target_str
+        else:
+            print(f"[!] 警告：配置的浏览器路径不存在: {target_str}，将自动切换为系统可用浏览器。")
+
+    # 默认回退：按候选列表顺序自动选取第一个存在的文件
     for candidate in BROWSER_CANDIDATE_PATHS:
         if os.path.exists(candidate):
             return candidate
@@ -110,11 +139,14 @@ class BrowserManager:
         启动并配置浏览器实例
         """
         if self.page is None:
+            browser_exe = find_browser_executable(self.custom_browser_path)
             options = create_browser_options(
                 headless=self.headless,
-                custom_browser_path=self.custom_browser_path,
+                custom_browser_path=browser_exe,
                 bypass_proxy=self.bypass_proxy,
             )
+            b_name = os.path.basename(browser_exe) if browser_exe else "系统推荐默认"
+            print(f"[*] 启动浏览器驱动: {b_name} ({browser_exe})")
             self.page = ChromiumPage(options)
             try:
                 # 调整页面窗口尺寸以完美适配移动端 H5 布局

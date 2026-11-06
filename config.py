@@ -25,6 +25,18 @@ SCREENSHOT_MAX_COUNT = 50     # 最多保留最近 50 张截图
 BROWSER_USER_DATA_DIR = BASE_DIR / "browser_data"
 BROWSER_USER_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
+# -------------------------------------------------------------
+# 浏览器自定义路径配置
+# -------------------------------------------------------------
+# 默认保持 None：自动优先检测系统中已安装的 Chrome，找不到再检测 Edge（开箱即用）
+# 自定义指定方式：
+#   1. 填入浏览器别名：例如 "chrome" 或 "edge"
+#   2. 填入完整绝对路径，例如：
+#      Windows: r"C:\Program Files\Google\Chrome\Application\chrome.exe"
+#      便携版/绿色版: r"D:\PortableChrome\chrome.exe"
+#      Mac: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+CUSTOM_BROWSER_PATH = None
+
 # 默认浏览器可执行文件备选路径 (兼容 Windows 与 Mac)
 BROWSER_CANDIDATE_PATHS = [
     # Windows 路径
