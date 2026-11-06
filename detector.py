@@ -241,32 +241,9 @@ def detect_product_status(
             )
 
         # -------------------------------------------------------------
-        # 判定分支 5: 下架状态 A（商品页留存，展示相似推荐）
-        # 特征：黄色提示条“此商品已下架，推荐查看相似商品”，底部按钮“查看相似商品”
+        # 判定分支 5: 区域无货/暂无存货判定 (优先于展示相似商品，确保无存货算0)
+        # 特征：页面提示“此商品在所选区域暂无存货”、“暂无存货”、“到货通知”等
         # -------------------------------------------------------------
-        delist_a_keywords = [
-            "此商品已下架，推荐查看相似商品",
-            "此商品已下架",
-            "查看相似商品",
-            "已下架，去看看其他",
-        ]
-        if any(kw in page_text or kw in html_content for kw in delist_a_keywords):
-            return DetectionResult(
-                sku_id=sku_id,
-                status=1,
-                remark="已下架（展示相似推荐）",
-            )
-
-        # -------------------------------------------------------------
-        # 判定分支 6: 停售与区域无货状态判定
-        # -------------------------------------------------------------
-        if "此商品已停售" in page_text or "此商品已停售" in html_content:
-            return DetectionResult(
-                sku_id=sku_id,
-                status=1,
-                remark="已停售",
-            )
-
         out_of_stock_keywords = [
             "此商品在所选区域暂无存货",
             "所选区域暂无存货",
@@ -277,6 +254,7 @@ def detect_product_status(
             "暂无存货",
             "暂无报价",
             "无存货",
+            "到货通知",
         ]
         if any(kw in page_text or kw in html_content for kw in out_of_stock_keywords):
             val = 1 if OUT_OF_STOCK_AS_DELIST else 0
@@ -284,6 +262,30 @@ def detect_product_status(
                 sku_id=sku_id,
                 status=val,
                 remark="在售但当前区域无货",
+            )
+
+        # -------------------------------------------------------------
+        # 判定分支 6: 停售与真正下架状态判定
+        # -------------------------------------------------------------
+        if "此商品已停售" in page_text or "此商品已停售" in html_content:
+            return DetectionResult(
+                sku_id=sku_id,
+                status=1,
+                remark="已停售",
+            )
+
+        delist_a_keywords = [
+            "此商品已下架，推荐查看相似商品",
+            "此商品已下架",
+            "已下架，去看看其他",
+            "商品已下架",
+            "已下架",
+        ]
+        if any(kw in page_text or kw in html_content for kw in delist_a_keywords):
+            return DetectionResult(
+                sku_id=sku_id,
+                status=1,
+                remark="已下架（展示相似推荐）",
             )
 
         # -------------------------------------------------------------
