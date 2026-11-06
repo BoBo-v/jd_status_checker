@@ -123,6 +123,20 @@ class BrowserManager:
                 pass
         return self.page
 
+    def is_alive(self) -> bool:
+        """
+        检查当前浏览器窗口/进程是否仍存活（未被用户手动关闭）
+        """
+        if not self.page:
+            return False
+        try:
+            if hasattr(self.page, "states") and not self.page.states.is_alive:
+                return False
+            _ = self.page.url
+            return True
+        except Exception:
+            return False
+
     def stop(self):
         """
         安全退出当前浏览器

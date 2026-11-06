@@ -128,15 +128,62 @@ class JDStatusInspector:
                     res: DetectionResult = detect_product_status(page, sku_id, mobile_url)
 
                     # -------------------------------------------------------------
-                    # 核心自动恢复机制：遇到提示登录/风控跳转时，自动彻底关闭浏览器重新开启重试
+                    # 核心机制 1: 遇到安全验证（CFE 滑动验证码）-> 等待人工滑动 或 关窗重启
                     # -------------------------------------------------------------
-                    if res.is_login and self.auto_restart_on_login:
+                    if res.is_captcha:
+                        print("\n" + "=" * 65)
+                        print("  [!] 检测到京东安全验证（CFE 滑动验证码）！")
+                        print("  [*] 请在弹出的浏览器窗口中【手动完成滑块验证】...")
+                        print("  [操作指南]")
+                        print("  1. 手动滑动成功后，程序将自动感应并继续后续检测；")
+                        print("  2. 若您直接点击右上角【X】关闭浏览器，程序将自动为您重启新浏览器！")
+                        print("=" * 65 + "\n")
+
+                        # 每秒轮询感知人工操作（最多等待 180 秒）
+                        for _ in range(180):
+                            time.sleep(1.0)
+
+                            # 探测 A：用户是否直接点 X 关闭了浏览器
+                            if not bm.is_alive():
+                                print("\n[*] 感应到您手动关闭了浏览器，正在自动重新打开全新浏览器并继续...")
+                                page = bm.restart(clean_session=True)
+                                time.sleep(1.5)
+                                res = detect_product_status(page, sku_id, mobile_url)
+                                break
+
+                            # 探测 B：用户是否已在页面上滑过验证码
+                            try:
+                                curr_url = page.url or ""
+                                body_ele = page.ele("tag:body")
+                                page_text = body_ele.text if body_ele else ""
+                                is_still_cfe = "cfe.m.jd.com" in curr_url or any(
+                                    kw in page_text for kw in ["验证一下", "滑动验证", "拖动滑块", "请按住滑块", "快速验证"]
+                                )
+                                if not is_still_cfe:
+                                    print("\n[√] 识别到人工滑块验证已完成！正在恢复检测...")
+                                    time.sleep(1.5)
+                                    res = detect_product_status(page, sku_id, mobile_url)
+                                    break
+                            except Exception:
+                                if not bm.is_alive():
+                                    print("\n[*] 感应到您手动关闭了浏览器，正在自动重新打开全新浏览器并继续...")
+                                    page = bm.restart(clean_session=True)
+                                    time.sleep(1.5)
+                                    res = detect_product_status(page, sku_id, mobile_url)
+                                    break
+                        else:
+                            print("\n[-] 人工验证等待超时（3分钟），自动跳过当前商品。")
+
+                    # -------------------------------------------------------------
+                    # 核心机制 2: 遇到提示登录/跳转拦截 (plogin / passport) -> 自动重启重试
+                    # -------------------------------------------------------------
+                    elif res.is_login and self.auto_restart_on_login:
                         for retry_idx in range(1, self.max_login_retries + 1):
-                            print(f"    [!] 检测到提示登录/风控拦截，执行【关闭浏览器并重新开启】恢复操作 ({retry_idx}/{self.max_login_retries})...")
+                            print(f"    [!] 检测到提示登录/跳转拦截，执行【关闭浏览器并重新开启】恢复操作 ({retry_idx}/{self.max_login_retries})...")
                             page = bm.restart(clean_session=True)
                             time.sleep(1.5)
                             res = detect_product_status(page, sku_id, mobile_url)
-                            if not res.is_login:
+                            if not res.is_login and not res.is_captcha:
                                 status_text = "正常在售" if res.status == 0 else ("已下架" if res.status == 1 else str(res.status))
                                 print(f"    [√] 重启浏览器后成功恢复！检测结果: 【{status_text}】(值={res.status})")
                                 break

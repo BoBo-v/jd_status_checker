@@ -201,7 +201,7 @@ def detect_product_status(
                 screenshot_path=img_path,
                 is_risk=True,
                 is_captcha=True,
-                is_login=True,  # CFE 也可以通过重启浏览器刷新状态
+                is_login=False,  # 明确区分：这是安全验证/人机滑块，不是登录拦截！
             )
 
         # -------------------------------------------------------------
